@@ -1,0 +1,534 @@
+-- =====================================================================
+-- Elelany Messenger — full database schema
+-- Run this ONCE in the Supabase SQL Editor (Dashboard -> SQL Editor).
+-- Safe to re-run: uses IF NOT EXISTS / CREATE OR REPLACE / DROP POLICY guards.
+-- =====================================================================
+
+create extension if not exists "pgcrypto";
+
+-- ---------------------------------------------------------------------
+-- 1. TABLES
+-- ---------------------------------------------------------------------
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  display_name text,
+  avatar_url text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.conversations (
+  id uuid primary key default gen_random_uuid(),
+  title text,
+  type text not null default 'direct',           -- 'direct' | 'group'
+  is_public boolean not null default false,
+  direct_key text unique,                          -- sorted "userA:userB" for direct chats
+  avatar_url text,
+  owner_id uuid references auth.users (id) on delete set null,
+  created_by uuid not null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.conversation_members (
+  conversation_id uuid not null references public.conversations (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (conversation_id, user_id)
+);
+
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.conversations (id) on delete cascade,
+  sender_id uuid not null references auth.users (id) on delete cascade,
+  body_text text not null default '',
+  body_html text not null default '',
+  created_at timestamptz not null default now(),
+  edited_at timestamptz,
+  seen_at timestamptz
+);
+
+create table if not exists public.reactions (
+  id uuid primary key default gen_random_uuid(),
+  message_id uuid not null references public.messages (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  emoji text not null,
+  created_at timestamptz not null default now(),
+  unique (message_id, user_id)                     -- one reaction per user per message
+);
+
+create table if not exists public.message_reads (
+  message_id uuid not null references public.messages (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  read_at timestamptz not null default now(),
+  primary key (message_id, user_id)
+);
+
+create table if not exists public.calls (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.conversations (id) on delete cascade,
+  caller_id uuid not null references auth.users (id) on delete cascade,
+  mode text not null default 'voice',              -- 'voice' | 'video'
+  status text not null default 'ringing',
+  created_at timestamptz not null default now(),
+  ended_at timestamptz
+);
+
+create table if not exists public.call_signals (
+  id uuid primary key default gen_random_uuid(),
+  call_id uuid not null references public.calls (id) on delete cascade,
+  conversation_id uuid not null references public.conversations (id) on delete cascade,
+  sender_id uuid not null references auth.users (id) on delete cascade,
+  recipient_id uuid references auth.users (id) on delete cascade,
+  type text not null,
+  payload jsonb,
+  created_at timestamptz not null default now()
+);
+
+-- Helpful indexes
+create index if not exists idx_members_user on public.conversation_members (user_id);
+create index if not exists idx_members_conversation on public.conversation_members (conversation_id);
+create index if not exists idx_messages_conversation_created on public.messages (conversation_id, created_at);
+create index if not exists idx_messages_sender on public.messages (sender_id);
+create index if not exists idx_reactions_message on public.reactions (message_id);
+create index if not exists idx_message_reads_user on public.message_reads (user_id);
+create index if not exists idx_call_signals_recipient on public.call_signals (recipient_id, created_at);
+create index if not exists idx_call_signals_call on public.call_signals (call_id);
+
+-- ---------------------------------------------------------------------
+-- 2. SECURITY-DEFINER HELPERS (bypass RLS to prevent recursive policies)
+-- ---------------------------------------------------------------------
+
+-- Drop any pre-existing versions first. CASCADE removes RLS policies that
+-- depend on these helpers; section 5 below recreates every policy, so the
+-- final state is complete. (Postgres cannot rename params or change the
+-- return type of a function via CREATE OR REPLACE.)
+drop function if exists public.is_conversation_member(uuid, uuid) cascade;
+drop function if exists public.is_conversation_creator(uuid, uuid) cascade;
+drop function if exists public.is_conversation_owner(uuid, uuid) cascade;
+
+create or replace function public.is_conversation_member(conv_id uuid, uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.conversation_members m
+    where m.conversation_id = conv_id and m.user_id = uid
+  );
+$$;
+
+create or replace function public.is_conversation_creator(conv_id uuid, uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.conversations c
+    where c.id = conv_id and (c.created_by = uid or c.owner_id = uid)
+  );
+$$;
+
+create or replace function public.is_conversation_owner(conv_id uuid, uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.conversations c
+    where c.id = conv_id and c.owner_id = uid
+  );
+$$;
+
+-- ---------------------------------------------------------------------
+-- 3. AUTO-CREATE PROFILE ON SIGN-UP
+-- ---------------------------------------------------------------------
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1), 'User')
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ---------------------------------------------------------------------
+-- 4. RPC FUNCTIONS CALLED BY THE APP
+-- ---------------------------------------------------------------------
+
+-- Unread counts per conversation for the current user.
+create or replace function public.get_unread_conversation_counts()
+returns table (conversation_id uuid, unread_count bigint)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select m.conversation_id, count(*)::bigint as unread_count
+  from public.messages m
+  join public.conversation_members cm
+    on cm.conversation_id = m.conversation_id and cm.user_id = auth.uid()
+  where m.sender_id <> auth.uid()
+    and not exists (
+      select 1 from public.message_reads r
+      where r.message_id = m.id and r.user_id = auth.uid()
+    )
+  group by m.conversation_id;
+$$;
+
+-- Mark every incoming message in a conversation as seen by the current user.
+create or replace function public.mark_conversation_seen(target_conversation_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_conversation_member(target_conversation_id, auth.uid()) then
+    return;
+  end if;
+
+  insert into public.message_reads (message_id, user_id)
+  select m.id, auth.uid()
+  from public.messages m
+  where m.conversation_id = target_conversation_id
+    and m.sender_id <> auth.uid()
+  on conflict (message_id, user_id) do nothing;
+
+  update public.messages m
+  set seen_at = now()
+  where m.conversation_id = target_conversation_id
+    and m.sender_id <> auth.uid()
+    and m.seen_at is null;
+end;
+$$;
+
+-- Per-message seen summaries for the current user's own messages (group read receipts).
+create or replace function public.get_message_seen_summaries(target_conversation_id uuid)
+returns table (
+  message_id uuid,
+  seen_count bigint,
+  total_other_members bigint,
+  seen_names text[]
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  with other_members as (
+    select count(*)::bigint as total
+    from public.conversation_members cm
+    where cm.conversation_id = target_conversation_id
+      and cm.user_id <> auth.uid()
+  )
+  select
+    m.id as message_id,
+    count(distinct r.user_id)::bigint as seen_count,
+    (select total from other_members) as total_other_members,
+    coalesce(
+      array_agg(distinct p.display_name) filter (where p.display_name is not null),
+      array[]::text[]
+    ) as seen_names
+  from public.messages m
+  left join public.message_reads r
+    on r.message_id = m.id and r.user_id <> auth.uid()
+  left join public.profiles p on p.id = r.user_id
+  where m.conversation_id = target_conversation_id
+    and m.sender_id = auth.uid()
+  group by m.id;
+$$;
+
+-- ---------------------------------------------------------------------
+-- 5. ROW LEVEL SECURITY
+-- ---------------------------------------------------------------------
+
+alter table public.profiles              enable row level security;
+alter table public.conversations         enable row level security;
+alter table public.conversation_members  enable row level security;
+alter table public.messages              enable row level security;
+alter table public.reactions             enable row level security;
+alter table public.message_reads         enable row level security;
+alter table public.calls                 enable row level security;
+alter table public.call_signals          enable row level security;
+
+-- ---- profiles ----
+drop policy if exists profiles_select on public.profiles;
+create policy profiles_select on public.profiles
+  for select to authenticated using (true);
+
+drop policy if exists profiles_insert on public.profiles;
+create policy profiles_insert on public.profiles
+  for insert to authenticated with check (id = auth.uid());
+
+drop policy if exists profiles_update on public.profiles;
+create policy profiles_update on public.profiles
+  for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+
+-- ---- conversations ----
+drop policy if exists conversations_select on public.conversations;
+create policy conversations_select on public.conversations
+  for select to authenticated
+  using (created_by = auth.uid() or public.is_conversation_member(id, auth.uid()));
+
+drop policy if exists conversations_insert on public.conversations;
+create policy conversations_insert on public.conversations
+  for insert to authenticated
+  with check (created_by = auth.uid() or created_by is null);
+
+drop policy if exists conversations_update on public.conversations;
+create policy conversations_update on public.conversations
+  for update to authenticated
+  using (public.is_conversation_member(id, auth.uid()))
+  with check (public.is_conversation_member(id, auth.uid()));
+
+drop policy if exists conversations_delete on public.conversations;
+create policy conversations_delete on public.conversations
+  for delete to authenticated
+  using (owner_id = auth.uid() or created_by = auth.uid());
+
+-- ---- conversation_members ----
+drop policy if exists members_select on public.conversation_members;
+create policy members_select on public.conversation_members
+  for select to authenticated
+  using (public.is_conversation_member(conversation_id, auth.uid()));
+
+drop policy if exists members_insert on public.conversation_members;
+create policy members_insert on public.conversation_members
+  for insert to authenticated
+  with check (
+    user_id = auth.uid()
+    or public.is_conversation_creator(conversation_id, auth.uid())
+    or public.is_conversation_member(conversation_id, auth.uid())
+  );
+
+drop policy if exists members_delete on public.conversation_members;
+create policy members_delete on public.conversation_members
+  for delete to authenticated
+  using (
+    user_id = auth.uid()
+    or public.is_conversation_owner(conversation_id, auth.uid())
+  );
+
+-- ---- messages ----
+drop policy if exists messages_select on public.messages;
+create policy messages_select on public.messages
+  for select to authenticated
+  using (public.is_conversation_member(conversation_id, auth.uid()));
+
+drop policy if exists messages_insert on public.messages;
+create policy messages_insert on public.messages
+  for insert to authenticated
+  with check (
+    sender_id = auth.uid()
+    and public.is_conversation_member(conversation_id, auth.uid())
+  );
+
+drop policy if exists messages_update on public.messages;
+create policy messages_update on public.messages
+  for update to authenticated
+  using (sender_id = auth.uid())
+  with check (sender_id = auth.uid());
+
+drop policy if exists messages_delete on public.messages;
+create policy messages_delete on public.messages
+  for delete to authenticated
+  using (
+    sender_id = auth.uid()
+    or public.is_conversation_owner(conversation_id, auth.uid())
+  );
+
+-- ---- reactions ----
+drop policy if exists reactions_select on public.reactions;
+create policy reactions_select on public.reactions
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.messages m
+      where m.id = reactions.message_id
+        and public.is_conversation_member(m.conversation_id, auth.uid())
+    )
+  );
+
+drop policy if exists reactions_insert on public.reactions;
+create policy reactions_insert on public.reactions
+  for insert to authenticated
+  with check (
+    user_id = auth.uid()
+    and exists (
+      select 1 from public.messages m
+      where m.id = reactions.message_id
+        and public.is_conversation_member(m.conversation_id, auth.uid())
+    )
+  );
+
+drop policy if exists reactions_delete on public.reactions;
+create policy reactions_delete on public.reactions
+  for delete to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from public.messages m
+      where m.id = reactions.message_id
+        and (m.sender_id = auth.uid() or public.is_conversation_owner(m.conversation_id, auth.uid()))
+    )
+  );
+
+-- ---- message_reads ----
+drop policy if exists reads_select on public.message_reads;
+create policy reads_select on public.message_reads
+  for select to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from public.messages m
+      where m.id = message_reads.message_id
+        and public.is_conversation_member(m.conversation_id, auth.uid())
+    )
+  );
+
+drop policy if exists reads_insert on public.message_reads;
+create policy reads_insert on public.message_reads
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+drop policy if exists reads_delete on public.message_reads;
+create policy reads_delete on public.message_reads
+  for delete to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from public.messages m
+      where m.id = message_reads.message_id
+        and (m.sender_id = auth.uid() or public.is_conversation_owner(m.conversation_id, auth.uid()))
+    )
+  );
+
+-- ---- calls ----
+drop policy if exists calls_select on public.calls;
+create policy calls_select on public.calls
+  for select to authenticated
+  using (public.is_conversation_member(conversation_id, auth.uid()));
+
+drop policy if exists calls_insert on public.calls;
+create policy calls_insert on public.calls
+  for insert to authenticated
+  with check (
+    caller_id = auth.uid()
+    and public.is_conversation_member(conversation_id, auth.uid())
+  );
+
+drop policy if exists calls_update on public.calls;
+create policy calls_update on public.calls
+  for update to authenticated
+  using (public.is_conversation_member(conversation_id, auth.uid()))
+  with check (public.is_conversation_member(conversation_id, auth.uid()));
+
+-- ---- call_signals ----
+drop policy if exists signals_select on public.call_signals;
+create policy signals_select on public.call_signals
+  for select to authenticated
+  using (
+    sender_id = auth.uid()
+    or recipient_id = auth.uid()
+    or public.is_conversation_member(conversation_id, auth.uid())
+  );
+
+drop policy if exists signals_insert on public.call_signals;
+create policy signals_insert on public.call_signals
+  for insert to authenticated
+  with check (
+    sender_id = auth.uid()
+    and public.is_conversation_member(conversation_id, auth.uid())
+  );
+
+-- ---------------------------------------------------------------------
+-- 6. REALTIME
+-- ---------------------------------------------------------------------
+
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.messages;
+  exception when duplicate_object then null; end;
+  begin
+    alter publication supabase_realtime add table public.reactions;
+  exception when duplicate_object then null; end;
+  begin
+    alter publication supabase_realtime add table public.message_reads;
+  exception when duplicate_object then null; end;
+  begin
+    alter publication supabase_realtime add table public.conversation_members;
+  exception when duplicate_object then null; end;
+  begin
+    alter publication supabase_realtime add table public.call_signals;
+  exception when duplicate_object then null; end;
+end $$;
+
+-- Include full row data in the replication stream so realtime delivers
+-- complete payloads (needed for reliable edit/delete events and RLS checks).
+alter table public.messages replica identity full;
+alter table public.reactions replica identity full;
+alter table public.message_reads replica identity full;
+
+-- ---------------------------------------------------------------------
+-- 7. STORAGE BUCKETS + POLICIES
+-- ---------------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('chat-uploads', 'chat-uploads', true)
+on conflict (id) do nothing;
+
+-- Public read for both buckets
+drop policy if exists "public read avatars" on storage.objects;
+create policy "public read avatars" on storage.objects
+  for select using (bucket_id = 'avatars');
+
+drop policy if exists "public read chat-uploads" on storage.objects;
+create policy "public read chat-uploads" on storage.objects
+  for select using (bucket_id = 'chat-uploads');
+
+-- Authenticated users may upload/update/delete their own files
+drop policy if exists "auth write avatars" on storage.objects;
+create policy "auth write avatars" on storage.objects
+  for insert to authenticated with check (bucket_id = 'avatars');
+
+drop policy if exists "auth update avatars" on storage.objects;
+create policy "auth update avatars" on storage.objects
+  for update to authenticated using (bucket_id = 'avatars');
+
+drop policy if exists "auth write chat-uploads" on storage.objects;
+create policy "auth write chat-uploads" on storage.objects
+  for insert to authenticated with check (bucket_id = 'chat-uploads');
+
+drop policy if exists "auth update chat-uploads" on storage.objects;
+create policy "auth update chat-uploads" on storage.objects
+  for update to authenticated using (bucket_id = 'chat-uploads');
+
+-- =====================================================================
+-- Done. Every table, policy, RPC, realtime channel and storage bucket
+-- the Elelany app calls is now provisioned.
+-- =====================================================================

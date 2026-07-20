@@ -1,0 +1,97 @@
+{
+  "name": "elelany-messenger",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Elelany Messenger desktop app",
+  "author": {
+    "name": "Elelany"
+  },
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "electron:dev": "ELECTRON_START_URL=http://localhost:5173 electron .",
+    "app:dir": "npm run build && electron-builder --dir",
+    "app:mac": "npm run build && electron-builder --mac",
+    "app:win": "npm run build && electron-builder --win",
+    "app:all": "npm run build && electron-builder --mac --win",
+    "release": "npm run build && electron-builder --mac --win --publish always"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "electron-updater": "^6.3.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "com.elelany.messenger",
+    "productName": "Elelany",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Klasna50",
+        "repo": "elelany-messenger"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Elelany uses your camera for video calls.",
+        "NSMicrophoneUsageDescription": "Elelany uses your microphone for voice and video calls.",
+        "NSScreenCaptureUsageDescription": "Elelany needs screen recording access to take screenshots you share in chats."
+      }
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Elelany"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Network"
+    }
+  }
+}
