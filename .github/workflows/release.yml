@@ -38,13 +38,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish
-        run: npx electron-builder ${{ matrix.target }} --publish always
+      # Build the React/Vite web bundle FIRST. This is what gets packaged inside
+      # the desktop app. The Supabase keys are baked in at THIS step (build time).
+      - name: Build web bundle
+        run: npm run build
         env:
-          # Baked into the renderer bundle at build time.
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
+      # Package the Electron app around dist/, then sign, notarize, and publish.
+      - name: Package and publish desktop app
+        run: npx electron-builder ${{ matrix.target }} --publish always
+        env:
           # Lets electron-builder upload the release assets.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
