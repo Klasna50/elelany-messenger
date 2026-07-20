@@ -8,6 +8,10 @@ on:
       - "v*"
   workflow_dispatch:
 
+# Let electron-builder upload installers to the GitHub Release.
+permissions:
+  contents: write
+
 jobs:
   release:
     strategy:
