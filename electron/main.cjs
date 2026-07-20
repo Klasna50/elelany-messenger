@@ -7,6 +7,8 @@ const {
   screen,
   shell,
   Menu,
+  Tray,
+  nativeImage,
   dialog,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
@@ -14,7 +16,9 @@ const { autoUpdater } = require("electron-updater");
 const isDev = !app.isPackaged;
 
 let mainWindow = null;
+let tray = null;
 let pendingSnipImage = null;
+app.isQuitting = false;
 
 // ---------------------------------------------------------------------
 // Main window
@@ -28,7 +32,6 @@ function createMainWindow() {
     minHeight: 620,
     show: false,
     backgroundColor: "#ffffff",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -45,15 +48,77 @@ function createMainWindow() {
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
+  // The packaged web app is a centered card with page margins (great on the web,
+  // but inside a desktop window it looks like a frame within a frame). Fill the
+  // window edge-to-edge so it reads as a native app.
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.insertCSS(`
+      html, body, #root { height: 100%; margin: 0; }
+      .app-bg { padding: 0 !important; min-height: 100vh !important; }
+      .app-bg > div {
+        max-width: none !important;
+        width: 100% !important;
+        height: 100vh !important;
+        border-radius: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+      }
+    `);
+  });
+
   // External links (invite mailto:, docs, attachments) open in the real browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:|^mailto:/i.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  // Clicking the window's close (X) button hides the window and keeps the app
+  // running in the background, so reopening is instant and the user stays
+  // signed in. The app only truly closes when the user explicitly quits
+  // (Cmd/Ctrl+Q, the app menu, or the tray "Quit" item).
+  mainWindow.on("close", (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
   });
+}
+
+function createTray() {
+  // macOS keeps a hidden app reachable through the Dock, so a tray isn't needed
+  // there. On Windows/Linux a hidden window has no taskbar entry, so the tray is
+  // the way back in.
+  if (process.platform === "darwin") return;
+
+  const image = nativeImage.createFromPath(path.join(__dirname, "tray.png"));
+  tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
+  tray.setToolTip("Elelany");
+
+  const showApp = () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createMainWindow();
+    }
+  };
+
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open Elelany", click: showApp },
+      { type: "separator" },
+      {
+        label: "Quit Elelany",
+        click: () => {
+          app.isQuitting = true;
+          app.quit();
+        },
+      },
+    ])
+  );
+
+  tray.on("click", showApp);
+  tray.on("double-click", showApp);
 }
 
 // ---------------------------------------------------------------------
@@ -267,15 +332,31 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     createMainWindow();
     buildAppMenu();
+    createTray();
     initAutoUpdater();
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+      // Dock-icon click on macOS: reveal the SAME window instead of building a
+      // new one. This keeps the renderer alive, so there's no reload and no
+      // login-screen flash — the user is already signed in.
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+      } else {
+        createMainWindow();
+      }
     });
   });
 
+  // Real quit (Cmd/Ctrl+Q, menu, tray) — allow the window's close to proceed.
+  app.on("before-quit", () => {
+    app.isQuitting = true;
+  });
+
+  // Do NOT quit when the window is hidden. Closing the window backgrounds the
+  // app (Dock on macOS, tray on Windows/Linux); it exits only via explicit quit.
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    // Intentionally empty — the window is hidden on close, never destroyed.
   });
 }
 

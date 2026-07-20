@@ -1300,6 +1300,17 @@ function isMessengerTabActive(): boolean {
   return document.visibilityState === "visible" && document.hasFocus();
 }
 
+function SplashScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-rose-50 p-4">
+      <div className="flex flex-col items-center gap-4">
+        <div className="flex h-16 w-16 animate-pulse items-center justify-center rounded-3xl bg-orange-300 text-[28px] font-bold text-white shadow-lg">E</div>
+        <div className="text-[15px] font-medium text-slate-400">Loading Elelany…</div>
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen() {
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
@@ -1736,6 +1747,7 @@ function MessageBubble({
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [currentProfile, setCurrentProfile] = useState<ProfileWithAvatar | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -2082,10 +2094,14 @@ export default function App() {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthChecked(true);
+    });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      setAuthChecked(true);
 
       if (!nextSession) {
         setOnlineUserIds(new Set());
@@ -7367,6 +7383,7 @@ export default function App() {
     return matchesSearch && !directChatUserIds.has(contact.id);
   });
 
+  if (!authChecked) return <SplashScreen />;
   if (!session) return <AuthScreen />;
 
   return (
