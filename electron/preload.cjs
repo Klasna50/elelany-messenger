@@ -10,6 +10,10 @@ const api = {
   captureWindow: () => ipcRenderer.invoke("elelany:capture-window"),
   captureCurrentWindow: () => ipcRenderer.invoke("elelany:capture-window"),
 
+  // UI zoom: "in" | "out" | "reset" | a numeric zoom factor.
+  zoom: (action) => ipcRenderer.invoke("elelany:zoom", action),
+  getZoom: () => ipcRenderer.invoke("elelany:get-zoom"),
+
   // Version + updates.
   getVersion: () => ipcRenderer.invoke("elelany:get-version"),
   checkForUpdates: () => ipcRenderer.invoke("elelany:check-for-updates"),

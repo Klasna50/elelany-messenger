@@ -32,6 +32,9 @@ function createMainWindow() {
     minHeight: 620,
     show: false,
     backgroundColor: "#ffffff",
+    // Windows/Linux: no menu ribbon (File/Edit/Window). Settings live in the
+    // in-app gear menu instead. macOS keeps its standard menu bar.
+    autoHideMenuBar: process.platform !== "darwin",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -302,6 +305,36 @@ function initAutoUpdater() {
   }, 6 * 60 * 60 * 1000);
 }
 
+// ---------------------------------------------------------------------
+// UI zoom (Cmd/Ctrl + scroll, and Cmd/Ctrl +/-/0)
+// ---------------------------------------------------------------------
+
+const ZOOM_MIN = 0.6;
+const ZOOM_MAX = 2.0;
+const ZOOM_STEP = 0.1;
+
+ipcMain.handle("elelany:zoom", (_event, action) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return 1;
+
+  const contents = mainWindow.webContents;
+  const current = contents.getZoomFactor();
+  let next = current;
+
+  if (action === "in") next = current + ZOOM_STEP;
+  else if (action === "out") next = current - ZOOM_STEP;
+  else if (action === "reset") next = 1;
+  else if (typeof action === "number") next = action;
+
+  next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next * 100) / 100));
+  contents.setZoomFactor(next);
+  return next;
+});
+
+ipcMain.handle("elelany:get-zoom", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return 1;
+  return mainWindow.webContents.getZoomFactor();
+});
+
 ipcMain.handle("elelany:get-version", () => app.getVersion());
 ipcMain.handle("elelany:check-for-updates", async () => {
   if (isDev) return { status: "dev" };
@@ -331,7 +364,16 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     createMainWindow();
-    buildAppMenu();
+
+    // macOS expects an application menu bar; Windows/Linux should not show a
+    // ribbon, so we remove it entirely (text editing shortcuts still work, and
+    // zoom/updates are handled in-app).
+    if (process.platform === "darwin") {
+      buildAppMenu();
+    } else {
+      Menu.setApplicationMenu(null);
+    }
+
     createTray();
     initAutoUpdater();
 

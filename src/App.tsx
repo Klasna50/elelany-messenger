@@ -1782,6 +1782,16 @@ export default function App() {
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [activityViewedAt, setActivityViewedAt] = useState<string>("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordStatus, setPasswordStatus] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
+  const [updateStatusText, setUpdateStatusText] = useState("");
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [chatSearchResults, setChatSearchResults] = useState<MessageRow[]>([]);
+  const [chatSearchLoading, setChatSearchLoading] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteStatus, setInviteStatus] = useState("");
@@ -2242,6 +2252,179 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem("elelany-accent-theme", accentTheme);
   }, [accentTheme]);
+
+  // Desktop only: Cmd/Ctrl + scroll (and Cmd/Ctrl with +, -, 0) resizes the whole
+  // UI using Chromium zoom, so text stays sharp at any scale. In the browser these
+  // shortcuts are already handled natively, so this is a no-op there.
+  useEffect(() => {
+    const desktop = (window as unknown as { elelany?: { zoom?: (action: string) => Promise<number> } }).elelany;
+    if (!desktop?.zoom) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      void desktop.zoom?.(event.deltaY < 0 ? "in" : "out");
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+
+      if (event.key === "0") {
+        event.preventDefault();
+        void desktop.zoom?.("reset");
+      } else if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        void desktop.zoom?.("in");
+      } else if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        void desktop.zoom?.("out");
+      }
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener("keydown", handleKey);
+
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, []);
+
+  // Desktop: app version + live auto-update status, surfaced in Settings so the
+  // Windows build doesn't need a menu bar for it.
+  useEffect(() => {
+    const desktop = (
+      window as unknown as {
+        elelany?: {
+          getVersion?: () => Promise<string>;
+          onUpdateStatus?: (
+            callback: (payload: { status: string; version?: string; percent?: number; message?: string }) => void
+          ) => () => void;
+        };
+      }
+    ).elelany;
+
+    if (!desktop?.getVersion) return;
+
+    desktop
+      .getVersion()
+      .then((version) => setAppVersion(version))
+      .catch(() => undefined);
+
+    const unsubscribe = desktop.onUpdateStatus?.((payload) => {
+      if (payload.status === "checking") setUpdateStatusText("Checking for updates…");
+      else if (payload.status === "available") setUpdateStatusText(`Update ${payload.version} found. Downloading…`);
+      else if (payload.status === "downloading") setUpdateStatusText(`Downloading… ${payload.percent ?? 0}%`);
+      else if (payload.status === "ready") setUpdateStatusText(`Version ${payload.version} is ready. Restart to install.`);
+      else if (payload.status === "up-to-date") setUpdateStatusText("You are on the latest version.");
+      else if (payload.status === "error") setUpdateStatusText(payload.message || "Could not check for updates.");
+    });
+
+    return () => unsubscribe?.();
+  }, []);
+
+  const changePassword = async () => {
+    setPasswordStatus("");
+
+    if (newPassword.length < 6) {
+      setPasswordStatus("Password must be at least 6 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus("Passwords do not match.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordSaving(false);
+
+    if (error) {
+      setPasswordStatus(error.message);
+      return;
+    }
+
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordStatus("Password updated.");
+  };
+
+  const checkForUpdatesFromSettings = async () => {
+    const desktop = (
+      window as unknown as { elelany?: { checkForUpdates?: () => Promise<{ status: string; message?: string }> } }
+    ).elelany;
+
+    if (!desktop?.checkForUpdates) {
+      setUpdateStatusText("Updates apply to the desktop app only.");
+      return;
+    }
+
+    setUpdateStatusText("Checking for updates…");
+    const result = await desktop.checkForUpdates();
+    if (result?.status === "error") setUpdateStatusText(result.message || "Could not check for updates.");
+  };
+
+  // Search the whole conversation history on the server, so results aren't
+  // limited to the messages currently loaded in the flow.
+  useEffect(() => {
+    const conversationId = activeConversation?.id;
+    const term = chatSearchQuery.trim();
+
+    if (!chatSearchOpen || !conversationId || term.length < 2) {
+      setChatSearchResults([]);
+      setChatSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setChatSearchLoading(true);
+
+    const timer = window.setTimeout(async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*, profiles!messages_sender_id_fkey(display_name, avatar_url)")
+        .eq("conversation_id", conversationId)
+        .ilike("body_text", `%${term}%`)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (cancelled) return;
+      setChatSearchLoading(false);
+
+      if (error) {
+        console.error("chat search failed", error);
+        setChatSearchResults([]);
+        return;
+      }
+
+      setChatSearchResults((data || []) as unknown as MessageRow[]);
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [chatSearchQuery, chatSearchOpen, activeConversation?.id]);
+
+  // Clear search state when switching conversations.
+  useEffect(() => {
+    setChatSearchOpen(false);
+    setChatSearchQuery("");
+    setChatSearchResults([]);
+  }, [activeConversation?.id]);
+
+  const openChatSearchResult = async (message: MessageRow) => {
+    const conversationId = activeConversation?.id;
+    if (!conversationId) return;
+
+    const messageId = String(message.id);
+    setChatSearchOpen(false);
+    setSuppressUnreadSeparatorConversationId(conversationId);
+
+    await ensureActivityMessageLoaded(conversationId, messageId, message);
+    centerAndHighlightActivityMessage(messageId);
+  };
 
   useEffect(() => {
     window.localStorage.setItem("elelany-accent-effect", accentEffect);
@@ -7389,8 +7572,6 @@ export default function App() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap');
-
         .elelany-lato,
         .elelany-lato * {
           font-family: 'Lato', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -8973,6 +9154,68 @@ export default function App() {
                     )}
                   </div>
                 </div>
+
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <div className="mb-2 text-[13px] font-bold uppercase tracking-[0.16em] text-slate-400">Account</div>
+
+                  <div className="mb-3 rounded-xl bg-slate-50 px-3 py-2">
+                    <div className="text-[12px] font-semibold uppercase tracking-[0.12em] text-slate-400">Signed in as</div>
+                    <div className="truncate text-[14px] font-semibold text-slate-700">{session?.user.email}</div>
+                    <div className="mt-1 text-[12px] text-slate-500">
+                      To change your name or photo, use the pencil button next to your name in the left panel.
+                    </div>
+                  </div>
+
+                  <div className="text-[13px] font-semibold text-slate-600">Change password</div>
+                  <input
+                    type="password"
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[14px] outline-none focus:border-emerald-300"
+                    placeholder="New password (at least 6 characters)"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[14px] outline-none focus:border-emerald-300"
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") changePassword();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="mt-2 w-full rounded-xl bg-emerald-400 px-3 py-2 text-[14px] font-semibold text-white transition hover:bg-emerald-500 disabled:bg-slate-300"
+                    onClick={changePassword}
+                    disabled={passwordSaving}
+                  >
+                    {passwordSaving ? "Updating…" : "Update password"}
+                  </button>
+
+                  {passwordStatus ? (
+                    <div className={`mt-2 text-[13px] font-medium ${passwordStatus === "Password updated." ? "text-emerald-600" : "text-rose-500"}`}>
+                      {passwordStatus}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <div className="mb-2 text-[13px] font-bold uppercase tracking-[0.16em] text-slate-400">App</div>
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-semibold text-slate-700">Elelany{appVersion ? ` ${appVersion}` : ""}</div>
+                      <div className="truncate text-[12px] text-slate-500">{updateStatusText || "Updates install automatically."}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
+                      onClick={checkForUpdatesFromSettings}
+                    >
+                      Check for updates
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
             ) : null}
@@ -9063,6 +9306,23 @@ export default function App() {
                   <>
                     <button
                       type="button"
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border bg-white text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 ${chatSearchOpen ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}
+                      onClick={() => {
+                        setChatSearchOpen((open) => !open);
+                        setChatSearchQuery("");
+                        setChatSearchResults([]);
+                      }}
+                      title="Search in this chat"
+                      aria-label="Search in this chat"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="6.25" />
+                        <path d="m16 16 4.5 4.5" />
+                      </svg>
+                    </button>
+
+                    <button
+                      type="button"
                       className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45"
                       onClick={() => startCall("voice")}
                       disabled={activeIsGroup || callStatus !== "idle"}
@@ -9089,6 +9349,75 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {chatSearchOpen && activeConversation ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[15px] outline-none focus:border-emerald-300"
+                    placeholder="Search messages in this chat…"
+                    value={chatSearchQuery}
+                    onChange={(event) => setChatSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setChatSearchOpen(false);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
+                    onClick={() => setChatSearchOpen(false)}
+                    aria-label="Close search"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="mt-2 text-[13px] font-medium text-slate-500">
+                  {chatSearchLoading
+                    ? "Searching…"
+                    : chatSearchQuery.trim().length < 2
+                      ? "Type at least 2 characters."
+                      : chatSearchResults.length
+                        ? `${chatSearchResults.length} result${chatSearchResults.length === 1 ? "" : "s"} — click to jump`
+                        : "No messages found."}
+                </div>
+
+                {chatSearchResults.length ? (
+                  <div className="mt-2 max-h-[260px] space-y-1.5 overflow-y-auto pr-1">
+                    {chatSearchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        type="button"
+                        onClick={() => openChatSearchResult(result)}
+                        className="flex w-full items-start gap-3 rounded-xl border border-transparent bg-white px-3 py-2 text-left transition hover:border-emerald-100 hover:bg-emerald-50/60"
+                      >
+                        <AvatarCircle
+                          imageUrl={
+                            result.sender_id === currentUserId
+                              ? getAvatarUrl(currentProfile)
+                              : getAvatarUrl(result.profiles as ProfileWithAvatar)
+                          }
+                          label={result.sender_id === currentUserId ? "You" : result.profiles?.display_name || "User"}
+                          size="sm"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[13px] font-bold text-slate-700">
+                              {result.sender_id === currentUserId ? "You" : result.profiles?.display_name || "User"}
+                            </span>
+                            <span className="shrink-0 text-[12px] text-slate-400">{formatDateTime(result.created_at)}</span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                            {getMessagePreviewText(result)}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {activeIsGroup && groupEditOpen ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
