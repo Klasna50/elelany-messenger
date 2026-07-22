@@ -2013,6 +2013,10 @@ export default function App() {
   const [screenshotSnipRect, setScreenshotSnipRect] = useState<ScreenshotRect | null>(null);
   const [screenshotSnipSourceImage, setScreenshotSnipSourceImage] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(390);
+  // Phones show one pane at a time: the chat list, or an open conversation.
+  // Purely a CSS switch below the md breakpoint — on desktop both panes are
+  // always visible and this value is ignored.
+  const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
   const [composerHeight, setComposerHeight] = useState(160);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [typingUserName, setTypingUserName] = useState("");
@@ -5396,6 +5400,9 @@ export default function App() {
   };
 
   const openConversation = async (item: ChatListItem, options?: { keepLeftPanelMode?: boolean; suppressAutoScroll?: boolean }) => {
+    // On a phone, opening a chat swaps the single visible pane. No effect on desktop.
+    setMobilePane("chat");
+
     if (!options?.keepLeftPanelMode) {
       setLeftPanelMode("chats");
       setSuppressUnreadSeparatorConversationId(null);
@@ -5485,6 +5492,7 @@ export default function App() {
   const startDirectChat = async (contact: Profile) => {
     if (!session) return;
     setNewChatOpen(false);
+    setMobilePane("chat");
 
     const directKey = makeDirectKey(session.user.id, contact.id);
 
@@ -9110,13 +9118,17 @@ export default function App() {
 
       `}</style>
 
-      <div className={`elelany-lato ${textSizeClass} accent-effect-${accentEffect} app-bg min-h-screen p-3 sm:p-4 md:p-6`} style={themeStyle}>
-      <div className="mx-auto flex h-[92vh] max-w-7xl overflow-hidden rounded-[28px] border border-slate-100 bg-white/96 shadow-2xl backdrop-blur">
+      <div className={`elelany-lato ${textSizeClass} accent-effect-${accentEffect} app-bg min-h-screen p-0 sm:p-4 md:p-6`} style={themeStyle}>
+      {/* Full bleed on a phone; the floating card look starts at sm. 100dvh
+          rather than vh so the browser's own chrome doesn't crop the composer. */}
+      <div className="mx-auto flex h-[100dvh] max-w-7xl overflow-hidden rounded-none border-0 bg-white/96 shadow-2xl backdrop-blur sm:h-[92vh] sm:rounded-[28px] sm:border sm:border-slate-100">
         <aside
-          className="relative hidden shrink-0 overflow-hidden border-r border-slate-200 bg-[#f4f4f4] md:flex"
+          className={`relative shrink-0 overflow-hidden border-r border-slate-200 bg-[#f4f4f4] md:flex ${
+            mobilePane === "list" ? "flex w-full max-md:!w-full" : "hidden"
+          }`}
           style={{ width: `${sidebarWidth}px` }}
         >
-          <div className="flex h-full w-[390px] min-w-[390px] flex-col">
+          <div className="flex h-full w-full min-w-0 flex-col md:w-[390px] md:min-w-[390px]">
             <div className="border-b border-slate-200 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
@@ -9966,10 +9978,23 @@ export default function App() {
           />
         </aside>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#ffffff]">
+        <main className={`min-h-0 min-w-0 flex-1 flex-col bg-[#ffffff] md:flex ${mobilePane === "chat" ? "flex" : "hidden"}`}>
           <div className="shrink-0 border-b border-slate-200 px-4 py-4 sm:px-6">
             <div className="flex items-center justify-between">
               <div className="flex min-w-0 items-center gap-3">
+                {/* Phones show one pane at a time, so they need a way back. */}
+                <button
+                  type="button"
+                  className="-ml-1 shrink-0 rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 md:hidden"
+                  onClick={() => setMobilePane("list")}
+                  aria-label="Back to chats"
+                  title="Back to chats"
+                >
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 5 8 12l7 7" />
+                  </svg>
+                </button>
+
                 <button
                   type="button"
                   className={`${activeIsGroup ? "cursor-pointer" : "cursor-default"}`}
@@ -10445,7 +10470,10 @@ export default function App() {
             ) : null}
 
             <div className="mb-3 flex items-center gap-2 sm:gap-3">
-              <div ref={pickerToolbarRef} className={`composer-toolbar ${toolbarIconSizeClass} relative min-w-0 flex flex-1 flex-nowrap items-center gap-1.5 overflow-visible bg-transparent px-0 py-1`}>
+              {/* Wraps to a second row on a phone rather than overflowing.
+                  Wrapping (not overflow-x) keeps overflow-visible intact, which
+                  the emoji, colour and sticker popups need to escape the bar. */}
+              <div ref={pickerToolbarRef} className={`composer-toolbar ${toolbarIconSizeClass} relative min-w-0 flex flex-1 max-md:flex-wrap flex-nowrap items-center gap-1.5 overflow-visible bg-transparent px-0 py-1`}>
                 {showRichTextTools ? (
                   <>
                     <button type="button" className={`rich-editor-tool inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/80 hover:text-slate-950 hover:shadow-sm ${richEditorActiveClass(editorActiveFormats.bold)}`} onMouseDown={(event) => event.preventDefault()} onClick={() => runEditorCommand("bold")} aria-label="Bold">
@@ -10899,7 +10927,7 @@ export default function App() {
                   </div>
 
                 {showStickerPicker ? (
-                  <div className="absolute bottom-full left-0 z-30 mb-2 w-[460px] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl">
+                  <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(460px,calc(100vw-2rem))] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <div className="text-[15px] font-semibold text-slate-700">Sticker picker</div>
