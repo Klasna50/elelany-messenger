@@ -2117,6 +2117,7 @@ export default function App() {
   }, [callStatus]);
 
   const currentUserId = session?.user.id || "";
+  const signedInUserIdRef = useRef<string>("");
   const activityStorageKey = currentUserId ? `elelany-activity-viewed-at-${currentUserId}` : "";
   const chatSortStorageKey = currentUserId ? `elelany-chat-sort-${currentUserId}` : "";
   const manualUnreadStorageKey = currentUserId ? `elelany-manual-unread-chats-${currentUserId}` : "";
@@ -2261,6 +2262,7 @@ export default function App() {
       }
 
       if (!nextSession) {
+        resetChatWorkspace();
         setOnlineUserIds(new Set());
         setHighlightedMessageId(null);
         setCurrentProfile(null);
@@ -2679,6 +2681,66 @@ export default function App() {
     setCurrentProfile(profile as ProfileWithAvatar);
     setProfileNameDraft((profile as ProfileWithAvatar).display_name || "");
   };
+
+  // Wipes every trace of the signed-in person's chats from memory.
+  //
+  // This MUST run on sign-out and whenever the signed-in account changes.
+  // The desktop app never reloads the page (closing the window only hides it),
+  // so without this, one account's chat list, messages and contacts stayed in
+  // React state and were shown to whoever signed in next on the same machine.
+  const resetChatWorkspace = () => {
+    setContacts([]);
+    setConversations([]);
+    setActiveConversation(null);
+    setActiveOtherUser(null);
+    setActiveMembers([]);
+    setMessages([]);
+    setMessageCache({});
+    setMessagesFullyLoaded({});
+    setMessagesLoadingOlder({});
+    setReactions([]);
+    setSeenSummaries({});
+    setSeenSummariesCache({});
+    setActivityFeed([]);
+    setPendingUploads([]);
+    setUnreadSeparatorMessageId(null);
+    setManualUnreadConversationIds([]);
+    setMutedConversationIds([]);
+    setHiddenConversationIds([]);
+    setFavoriteConversationIds([]);
+    setBlockedUserIds([]);
+    setChatSearchOpen(false);
+    setChatSearchQuery("");
+    setChatSearchResults([]);
+    setChatSearchLoading(false);
+
+    messageCacheRef.current = {};
+    localOutgoingMessagesRef.current = {};
+    loadedConversationIdsRef.current = new Set();
+    messageScrollPositionsRef.current = {};
+    messageRefs.current = {};
+    activeConversationIdRef.current = null;
+
+    // Don't leave the previous account's unread count on the app icon.
+    const desktop = window as unknown as {
+      elelany?: { setUnreadBadge?: (count: number) => void };
+      electronAPI?: { setUnreadBadge?: (count: number) => void };
+    };
+    (desktop.elelany?.setUnreadBadge || desktop.electronAPI?.setUnreadBadge)?.(0);
+  };
+
+  // Belt and braces: sign-out clears the workspace above, but if a session is
+  // ever swapped for a different account without passing through a signed-out
+  // state, this catches it. Declared before the effect that loads chats, so the
+  // clear always lands first.
+  useEffect(() => {
+    const previousUserId = signedInUserIdRef.current;
+    signedInUserIdRef.current = currentUserId;
+
+    if (previousUserId && previousUserId !== currentUserId) {
+      resetChatWorkspace();
+    }
+  }, [currentUserId]);
 
   const fetchContacts = async () => {
     if (!session) return;
