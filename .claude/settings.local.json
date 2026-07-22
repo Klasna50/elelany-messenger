@@ -67,7 +67,8 @@
       "Bash(curl -sL \"https://github.com/Klasna50/elelany-messenger/releases/latest/download/latest-mac.yml\")",
       "Bash(curl -sL \"https://github.com/Klasna50/elelany-messenger/releases/latest/download/latest.yml\")",
       "Bash(awk 'NR>=9199 && NR<=9420' src/App.tsx)",
-      "Bash(echo \"=== tsc exit $? ===\")"
+      "Bash(echo \"=== tsc exit $? ===\")",
+      "Bash(echo \"tsc exit $?\")"
     ]
   }
 }

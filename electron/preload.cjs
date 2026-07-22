@@ -14,6 +14,9 @@ const api = {
   zoom: (action) => ipcRenderer.invoke("elelany:zoom", action),
   getZoom: () => ipcRenderer.invoke("elelany:get-zoom"),
 
+  // Unread count shown on the dock (macOS) or taskbar icon (Windows).
+  setUnreadBadge: (count) => ipcRenderer.send("elelany:set-unread-badge", count),
+
   // Version + updates.
   getVersion: () => ipcRenderer.invoke("elelany:get-version"),
   checkForUpdates: () => ipcRenderer.invoke("elelany:check-for-updates"),

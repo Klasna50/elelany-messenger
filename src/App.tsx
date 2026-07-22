@@ -3155,6 +3155,28 @@ export default function App() {
     return isChatManuallyUnread(item.conversation.id) ? 1 : 0;
   };
 
+  // Total unread across every chat, mirrored onto the desktop icon so a new
+  // message is visible without the window being open. Muted chats are skipped,
+  // matching the grey (rather than green) badge they get in the chat list.
+  const totalUnreadCount = useMemo(
+    () =>
+      conversations.reduce((total, item) => {
+        if (mutedConversationIds.includes(item.conversation.id)) return total;
+        const count = item.unreadCount > 0 ? item.unreadCount : manualUnreadConversationIds.includes(item.conversation.id) ? 1 : 0;
+        return total + count;
+      }, 0),
+    [conversations, mutedConversationIds, manualUnreadConversationIds]
+  );
+
+  useEffect(() => {
+    const desktop = window as unknown as {
+      elelany?: { setUnreadBadge?: (count: number) => void };
+      electronAPI?: { setUnreadBadge?: (count: number) => void };
+    };
+    const setUnreadBadge = desktop.elelany?.setUnreadBadge || desktop.electronAPI?.setUnreadBadge;
+    setUnreadBadge?.(totalUnreadCount);
+  }, [totalUnreadCount]);
+
   const deleteChatFromList = async (item: ChatListItem) => {
     if (!session) return;
 

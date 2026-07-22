@@ -115,6 +115,20 @@ function createMainWindow() {
   });
 }
 
+// Every "bring the app back" path goes through here: dock click, tray click,
+// tray menu, and relaunch from a pinned taskbar icon. A hidden window needs
+// show(); a minimized one needs restore(); both then need focus().
+function revealMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+    return;
+  }
+
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function createTray() {
   // macOS keeps a hidden app reachable through the Dock, so a tray isn't needed
   // there. On Windows/Linux a hidden window has no taskbar entry, so the tray is
@@ -125,14 +139,7 @@ function createTray() {
   tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
   tray.setToolTip("Elelany");
 
-  const showApp = () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createMainWindow();
-    }
-  };
+  const showApp = () => revealMainWindow();
 
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -151,6 +158,54 @@ function createTray() {
   tray.on("click", showApp);
   tray.on("double-click", showApp);
 }
+
+// ---------------------------------------------------------------------
+// Unread badge on the app icon
+// ---------------------------------------------------------------------
+
+// Windows has no dock badge, so we draw the red dot ourselves and hang it on
+// the taskbar button as an overlay icon. Built as an SVG data URL so there is
+// no extra asset to ship and it stays sharp at any scale.
+function buildOverlayIcon(count) {
+  const label = count > 99 ? "99+" : String(count);
+  const fontSize = label.length > 2 ? 15 : label.length > 1 ? 18 : 21;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+      <circle cx="16" cy="16" r="15" fill="#ef4444"/>
+      <text x="16" y="16" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif"
+            font-size="${fontSize}" font-weight="700" text-anchor="middle"
+            dominant-baseline="central">${label}</text>
+    </svg>`;
+
+  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+}
+
+function setUnreadBadge(rawCount) {
+  const count = Math.max(0, Math.floor(Number(rawCount) || 0));
+
+  // macOS/Linux: the dock badge is built in.
+  if (typeof app.setBadgeCount === "function") {
+    try {
+      app.setBadgeCount(count);
+    } catch {
+      // Some Linux desktops have no Unity launcher; a missing badge is harmless.
+    }
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  if (process.platform === "win32") {
+    mainWindow.setOverlayIcon(
+      count > 0 ? buildOverlayIcon(count) : null,
+      count > 0 ? `${count} unread message${count === 1 ? "" : "s"}` : ""
+    );
+  }
+
+  if (tray) {
+    tray.setToolTip(count > 0 ? `Elelany — ${count} unread` : "Elelany");
+  }
+}
+
+ipcMain.on("elelany:set-unread-badge", (_event, count) => setUnreadBadge(count));
 
 // ---------------------------------------------------------------------
 // Screenshot: capture just this app window (no OS permission needed)
@@ -403,11 +458,12 @@ ipcMain.on("elelany:restart-to-update", () => restartToUpdate());
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Launching the app again (pinned taskbar icon, Start menu, desktop shortcut)
+  // lands here instead of starting a second copy. The window is HIDDEN after a
+  // close, not minimized, so it must be show()n — restore()/focus() alone leave
+  // a hidden window hidden, which is why the taskbar icon appeared to do nothing.
   app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    revealMainWindow();
   });
 
   app.whenReady().then(() => {
@@ -429,12 +485,7 @@ if (!app.requestSingleInstanceLock()) {
       // Dock-icon click on macOS: reveal the SAME window instead of building a
       // new one. This keeps the renderer alive, so there's no reload and no
       // login-screen flash — the user is already signed in.
-      if (mainWindow) {
-        mainWindow.show();
-        mainWindow.focus();
-      } else {
-        createMainWindow();
-      }
+      revealMainWindow();
     });
   });
 
