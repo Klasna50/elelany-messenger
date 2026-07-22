@@ -1964,6 +1964,8 @@ export default function App() {
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
   const [groupStatus, setGroupStatus] = useState("");
   const [groupEditOpen, setGroupEditOpen] = useState(false);
+  const [groupAddBusyId, setGroupAddBusyId] = useState("");
+  const [groupAddStatus, setGroupAddStatus] = useState("");
   const [groupNameDraft, setGroupNameDraft] = useState("");
   const [groupEditSaving, setGroupEditSaving] = useState(false);
   const [groupEditStatus, setGroupEditStatus] = useState("");
@@ -5610,6 +5612,71 @@ export default function App() {
     setGroupEditOpen(false);
   };
 
+  // Adds one of your contacts to the group you have open. Any member may do
+  // this, which is what the members_insert policy already allows — so this
+  // needs no schema change.
+  const addMemberToGroup = async (contact: Profile) => {
+    if (!session || !activeConversation || !activeIsGroup) return;
+    if (groupAddBusyId) return;
+
+    setGroupAddBusyId(contact.id);
+    setGroupAddStatus("");
+
+    const { error } = await supabase
+      .from("conversation_members")
+      .upsert(
+        { conversation_id: activeConversation.id, user_id: contact.id },
+        { onConflict: "conversation_id,user_id" }
+      );
+
+    setGroupAddBusyId("");
+
+    if (error) {
+      console.error("addMemberToGroup failed", error);
+      setGroupAddStatus(error.message || `Could not add ${contact.display_name || "that person"}.`);
+      return;
+    }
+
+    setGroupAddStatus(`${contact.display_name || "Contact"} added to the group.`);
+
+    // Show them in the member strip straight away, then reconcile.
+    setActiveMembers((current) =>
+      current.some((member) => member.id === contact.id) ? current : [...current, contact]
+    );
+
+    await fetchConversations();
+  };
+
+  const removeMemberFromGroup = async (member: Profile) => {
+    if (!session || !activeConversation || !activeIsGroup) return;
+    if (!isActiveGroupOwner || member.id === session.user.id) return;
+    if (groupAddBusyId) return;
+
+    if (!window.confirm(`Remove ${member.display_name || "this person"} from the group?`)) return;
+
+    setGroupAddBusyId(member.id);
+    setGroupAddStatus("");
+
+    const { error } = await supabase
+      .from("conversation_members")
+      .delete()
+      .eq("conversation_id", activeConversation.id)
+      .eq("user_id", member.id);
+
+    setGroupAddBusyId("");
+
+    if (error) {
+      console.error("removeMemberFromGroup failed", error);
+      setGroupAddStatus(error.message || "Could not remove that person.");
+      return;
+    }
+
+    setGroupAddStatus(`${member.display_name || "Contact"} removed from the group.`);
+    setActiveMembers((current) => current.filter((item) => item.id !== member.id));
+
+    await fetchConversations();
+  };
+
   const saveGroupName = async () => {
     if (!session || !activeConversation || !activeIsGroup) return;
 
@@ -8098,6 +8165,13 @@ export default function App() {
     setInviteStatus("Invite email opened in your mail app.");
   };
 
+  // Contacts who are not already in the open group.
+  const addableGroupContacts = useMemo(() => {
+    const memberIds = new Set(activeMembers.map((member) => member.id));
+    memberIds.add(currentUserId);
+    return contacts.filter((contact) => !memberIds.has(contact.id));
+  }, [contacts, activeMembers, currentUserId]);
+
   const visibleContacts = contacts.filter((contact) => {
     const name = contact.display_name || "";
     const matchesSearch = name.toLowerCase().includes(query.toLowerCase());
@@ -10082,6 +10156,64 @@ export default function App() {
                   >
                     Change avatar
                   </button>
+                </div>
+
+                <div className="mt-3 rounded-2xl bg-white p-3">
+                  <div className="mb-2 text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Members ({activeMembers.length})
+                  </div>
+
+                  <div className="mb-3 max-h-[150px] space-y-1 overflow-y-auto pr-1">
+                    {activeMembers.map((member) => (
+                      <div key={member.id} className="flex items-center gap-2 rounded-xl px-1 py-1">
+                        <AvatarCircle imageUrl={getAvatarUrl(member)} label={member.display_name} size="sm" online={isUserOnline(member.id)} showPresence />
+                        <div className="min-w-0 flex-1 truncate text-[14px] font-medium text-slate-700">
+                          {member.display_name || "User"}
+                          {member.id === session.user.id ? <span className="text-slate-400"> (you)</span> : null}
+                        </div>
+                        {isActiveGroupOwner && member.id !== session.user.id ? (
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50"
+                            onClick={() => void removeMemberFromGroup(member)}
+                            disabled={groupAddBusyId === member.id}
+                            title="Remove from group"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mb-2 text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-400">Add a member</div>
+
+                  {addableGroupContacts.length ? (
+                    <div className="max-h-[150px] space-y-1 overflow-y-auto pr-1">
+                      {addableGroupContacts.map((contact) => (
+                        <div key={contact.id} className="flex items-center gap-2 rounded-xl px-1 py-1">
+                          <AvatarCircle imageUrl={getAvatarUrl(contact)} label={contact.display_name} size="sm" />
+                          <div className="min-w-0 flex-1 truncate text-[14px] font-medium text-slate-700">
+                            {contact.display_name || "User"}
+                          </div>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-lg bg-emerald-400 px-2.5 py-1 text-[12px] font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                            onClick={() => void addMemberToGroup(contact)}
+                            disabled={groupAddBusyId === contact.id}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[13px] text-slate-500">
+                      Everyone you know is already in this group. Add someone as a contact first, from New message.
+                    </div>
+                  )}
+
+                  {groupAddStatus ? <div className="mt-2 text-[12px] font-medium text-slate-600">{groupAddStatus}</div> : null}
                 </div>
 
                 <div className="mt-3 rounded-2xl bg-white p-3">
