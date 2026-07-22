@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
-import type { Conversation, MessageRow, Profile, ReactionRow } from "./types";
+import type { ContactRequestRow, Conversation, MessageRow, Profile, ReactionRow } from "./types";
 
 type ChatListItem = {
   conversation: Conversation;
@@ -1889,6 +1889,9 @@ export default function App() {
   const [profileNameSaving, setProfileNameSaving] = useState(false);
   const [profileNameStatus, setProfileNameStatus] = useState("");
   const [contacts, setContacts] = useState<Profile[]>([]);
+  const [incomingContactRequests, setIncomingContactRequests] = useState<ContactRequestRow[]>([]);
+  const [outgoingContactRequests, setOutgoingContactRequests] = useState<ContactRequestRow[]>([]);
+  const [contactRequestBusyId, setContactRequestBusyId] = useState("");
   const [conversations, setConversations] = useState<ChatListItem[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [activeOtherUser, setActiveOtherUser] = useState<Profile | null>(null);
@@ -2690,6 +2693,11 @@ export default function App() {
   // React state and were shown to whoever signed in next on the same machine.
   const resetChatWorkspace = () => {
     setContacts([]);
+    setIncomingContactRequests([]);
+    setOutgoingContactRequests([]);
+    setContactRequestBusyId("");
+    setInviteEmail("");
+    setInviteStatus("");
     setConversations([]);
     setActiveConversation(null);
     setActiveOtherUser(null);
@@ -2741,6 +2749,115 @@ export default function App() {
       resetChatWorkspace();
     }
   }, [currentUserId]);
+
+  // ---- Contact requests -------------------------------------------------
+  // Adding someone no longer drops you straight into their chat list: they get
+  // a pending request and choose Accept or Ignore. RLS limits these rows to the
+  // two people involved.
+  const fetchContactRequests = async () => {
+    if (!session) return;
+
+    const { data, error } = await supabase
+      .from("contact_requests")
+      .select(
+        "*, requester:profiles!contact_requests_requester_id_fkey(id, display_name, avatar_url), recipient:profiles!contact_requests_recipient_id_fkey(id, display_name, avatar_url)"
+      )
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      // Before contact-requests.sql has been run the table does not exist yet.
+      // That is not fatal — the rest of the app carries on as before.
+      if (error.code !== "42P01") console.warn("fetchContactRequests failed", error);
+      return;
+    }
+
+    const rows = (data || []) as unknown as ContactRequestRow[];
+    setIncomingContactRequests(rows.filter((row) => row.recipient_id === session.user.id));
+    setOutgoingContactRequests(rows.filter((row) => row.requester_id === session.user.id));
+  };
+
+  const sendContactRequest = async () => {
+    if (!session) return;
+
+    const email = inviteEmail.trim();
+    if (!email) {
+      setInviteStatus("Enter an email address first.");
+      return;
+    }
+
+    setInviteStatus("Sending request…");
+
+    const { data, error } = await supabase.rpc("send_contact_request", { target_email: email });
+
+    if (error) {
+      setInviteStatus(
+        error.code === "42883" || error.code === "PGRST202"
+          ? "Contact requests are not set up on the server yet."
+          : error.message || "Could not send the request."
+      );
+      return;
+    }
+
+    const result = (data || {}) as { status?: string; display_name?: string | null };
+    const who = result.display_name || "That person";
+
+    switch (result.status) {
+      case "sent":
+        setInviteEmail("");
+        setInviteStatus(`Request sent to ${who}. You'll see the chat once they accept.`);
+        void fetchContactRequests();
+        break;
+      case "already_sent":
+        setInviteStatus(`You already have a request waiting with ${who}.`);
+        break;
+      case "incoming_pending":
+        setInviteStatus(`${who} already sent you a request — accept it above.`);
+        break;
+      case "already_contacts":
+        setInviteStatus(`You and ${who} already have a chat.`);
+        break;
+      case "self":
+        setInviteStatus("That's your own email address.");
+        break;
+      case "no_account":
+        setInviteStatus("No Elelany account uses that email. Use \"Email invite\" to invite them.");
+        break;
+      default:
+        setInviteStatus("Could not send the request.");
+    }
+  };
+
+  const respondToContactRequest = async (request: ContactRequestRow, accept: boolean) => {
+    if (!session || contactRequestBusyId) return;
+
+    setContactRequestBusyId(request.id);
+
+    // Take it off the list straight away; it is restored if the call fails.
+    setIncomingContactRequests((current) => current.filter((item) => item.id !== request.id));
+
+    const { data, error } = await supabase.rpc("respond_to_contact_request", {
+      request_id: request.id,
+      accept,
+    });
+
+    setContactRequestBusyId("");
+
+    if (error) {
+      console.error("respond_to_contact_request failed", error);
+      void fetchContactRequests();
+      return;
+    }
+
+    const result = (data || {}) as { status?: string; conversation_id?: string };
+
+    if (result.status === "accepted") {
+      await fetchContacts();
+      await fetchConversations();
+    }
+
+    void fetchContactRequests();
+  };
 
   const fetchContacts = async () => {
     if (!session) return;
@@ -2950,6 +3067,7 @@ export default function App() {
       await ensureProfile();
       await fetchContacts();
       await fetchConversations();
+      await fetchContactRequests();
     };
 
     boot();
@@ -2958,6 +3076,10 @@ export default function App() {
       .channel("private-list-refresh")
       .on("postgres_changes", { event: "*", schema: "public", table: "conversation_members" }, () => scheduleConversationsRefresh(250))
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => scheduleConversationsRefresh(250))
+      // A contact request should land while the app is open, not on next launch.
+      .on("postgres_changes", { event: "*", schema: "public", table: "contact_requests" }, () => {
+        void fetchContactRequests();
+      })
       .subscribe();
 
     return () => {
@@ -3226,8 +3348,8 @@ export default function App() {
         if (mutedConversationIds.includes(item.conversation.id)) return total;
         const count = item.unreadCount > 0 ? item.unreadCount : manualUnreadConversationIds.includes(item.conversation.id) ? 1 : 0;
         return total + count;
-      }, 0),
-    [conversations, mutedConversationIds, manualUnreadConversationIds]
+      }, incomingContactRequests.length),
+    [conversations, mutedConversationIds, manualUnreadConversationIds, incomingContactRequests.length]
   );
 
   useEffect(() => {
@@ -9084,27 +9206,60 @@ export default function App() {
               </div>
 
               <div className="mb-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
-                <div className="mb-2 text-[13px] font-semibold text-slate-600">Invite a new contact</div>
+                <div className="mb-2 text-[13px] font-semibold text-slate-600">Add a contact</div>
                 <div className="flex gap-2">
                   <input
                     type="email"
                     className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-[14px] outline-none focus:border-orange-200"
-                    placeholder="Email address"
+                    placeholder="Their email address"
                     value={inviteEmail}
                     onChange={(event) => {
                       setInviteEmail(event.target.value);
                       setInviteStatus("");
                     }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void sendContactRequest();
+                      }
+                    }}
                   />
                   <button
                     type="button"
                     className="shrink-0 rounded-xl bg-emerald-400 px-3 py-2 text-[13px] font-semibold text-white transition hover:bg-emerald-500"
-                    onClick={openInviteEmail}
+                    onClick={() => void sendContactRequest()}
                   >
-                    Invite
+                    Send request
                   </button>
                 </div>
-                {inviteStatus ? <div className="mt-2 text-[12px] font-medium text-slate-500">{inviteStatus}</div> : null}
+
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="text-[12px] text-slate-500">They choose whether to accept.</div>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[12px] font-semibold text-slate-500 underline decoration-slate-300 underline-offset-2 transition hover:text-slate-700"
+                    onClick={openInviteEmail}
+                    title="For people who don't have an Elelany account yet"
+                  >
+                    Email invite
+                  </button>
+                </div>
+
+                {inviteStatus ? <div className="mt-2 text-[12px] font-medium text-slate-600">{inviteStatus}</div> : null}
+
+                {outgoingContactRequests.length ? (
+                  <div className="mt-3 border-t border-slate-100 pt-2">
+                    <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Waiting for a reply</div>
+                    {outgoingContactRequests.map((request) => (
+                      <div key={request.id} className="flex items-center gap-2 py-1">
+                        <AvatarCircle imageUrl={getAvatarUrl(request.recipient as ProfileWithAvatar | null)} label={request.recipient?.display_name} size="sm" />
+                        <div className="min-w-0 truncate text-[13px] font-medium text-slate-600">
+                          {request.recipient?.display_name || "User"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="max-h-[220px] space-y-2 overflow-y-auto pr-1">
@@ -9127,6 +9282,50 @@ export default function App() {
                     No contacts available for a new chat.
                   </div>
                 )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Someone wants to be a contact. Sits above the chat list so it is
+              the first thing seen, and cannot be missed the way a tab badge can. */}
+          {incomingContactRequests.length ? (
+            <div className="border-b border-emerald-100 bg-emerald-50/70 px-4 py-3">
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700">
+                {incomingContactRequests.length === 1 ? "Contact request" : `${incomingContactRequests.length} contact requests`}
+              </div>
+
+              <div className="space-y-2">
+                {incomingContactRequests.map((request) => (
+                  <div key={request.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
+                    <AvatarCircle imageUrl={getAvatarUrl(request.requester as ProfileWithAvatar | null)} label={request.requester?.display_name} size="sm" />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[15px] font-semibold text-slate-900">
+                        {request.requester?.display_name || "Someone"}
+                      </div>
+                      <div className="truncate text-[12px] text-slate-500">wants to connect with you</div>
+                    </div>
+
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        type="button"
+                        className="rounded-xl bg-emerald-400 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                        onClick={() => void respondToContactRequest(request, true)}
+                        disabled={contactRequestBusyId === request.id}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-xl bg-slate-100 px-3 py-1.5 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50"
+                        onClick={() => void respondToContactRequest(request, false)}
+                        disabled={contactRequestBusyId === request.id}
+                      >
+                        Ignore
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : null}

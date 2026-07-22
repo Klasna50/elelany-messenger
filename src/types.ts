@@ -46,3 +46,15 @@ export type ReactionRow = {
   created_at: string;
   profiles?: ProfileLike | null;
 };
+
+// A pending "add me as a contact" request. Mirrors supabase/contact-requests.sql.
+export type ContactRequestRow = {
+  id: string;
+  requester_id: string;
+  recipient_id: string;
+  status: "pending" | "accepted" | "ignored" | string;
+  created_at: string;
+  responded_at?: string | null;
+  requester?: ProfileLike | null;
+  recipient?: ProfileLike | null;
+};
