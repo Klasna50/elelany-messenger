@@ -1892,6 +1892,7 @@ export default function App() {
   const [incomingContactRequests, setIncomingContactRequests] = useState<ContactRequestRow[]>([]);
   const [outgoingContactRequests, setOutgoingContactRequests] = useState<ContactRequestRow[]>([]);
   const [contactRequestBusyId, setContactRequestBusyId] = useState("");
+  const [contactRequestError, setContactRequestError] = useState("");
   const [conversations, setConversations] = useState<ChatListItem[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [activeOtherUser, setActiveOtherUser] = useState<Profile | null>(null);
@@ -2696,6 +2697,7 @@ export default function App() {
     setIncomingContactRequests([]);
     setOutgoingContactRequests([]);
     setContactRequestBusyId("");
+    setContactRequestError("");
     setInviteEmail("");
     setInviteStatus("");
     setConversations([]);
@@ -2843,8 +2845,11 @@ export default function App() {
 
     setContactRequestBusyId("");
 
+    // Never fail silently here: a request that quietly reappears looks like a
+    // broken button. Say what went wrong instead.
     if (error) {
       console.error("respond_to_contact_request failed", error);
+      setContactRequestError(error.message || "Could not answer the request. Please try again.");
       void fetchContactRequests();
       return;
     }
@@ -2852,8 +2857,23 @@ export default function App() {
     const result = (data || {}) as { status?: string; conversation_id?: string };
 
     if (result.status === "accepted") {
+      setContactRequestError("");
       await fetchContacts();
-      await fetchConversations();
+      const listItems = await fetchConversations();
+
+      // Drop straight into the new chat, so accepting visibly does something.
+      const opened = (listItems || []).find(
+        (item) => item.conversation.id === result.conversation_id
+      );
+      if (opened) openConversation(opened);
+    } else if (result.status === "ignored") {
+      setContactRequestError("");
+    } else if (result.status === "already_answered") {
+      setContactRequestError("That request was already answered.");
+    } else if (result.status === "not_found" || result.status === "not_yours") {
+      setContactRequestError("That request is no longer available.");
+    } else {
+      setContactRequestError("Could not answer the request. Please try again.");
     }
 
     void fetchContactRequests();
@@ -3022,7 +3042,7 @@ export default function App() {
         setActiveConversation(listItems[0].conversation);
         setActiveOtherUser(listItems[0].otherUser);
         setActiveMembers(listItems[0].members);
-        return;
+        return listItems;
       }
 
       if (currentActiveId) {
@@ -3037,6 +3057,10 @@ export default function App() {
           });
         }
       }
+
+      // Returned so callers can act on the fresh list right away (accepting a
+      // contact request opens the new chat). Existing callers ignore it.
+      return listItems;
     } catch (error) {
       console.error("fetchConversations failed", error);
     } finally {
@@ -9327,6 +9351,12 @@ export default function App() {
                   </div>
                 ))}
               </div>
+
+              {contactRequestError ? (
+                <div className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-600">
+                  {contactRequestError}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

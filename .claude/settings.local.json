@@ -75,7 +75,9 @@
       "Bash(python3 -c \"import yaml,sys; d=yaml.safe_load\\(open\\('.github/workflows/release.yml'\\)\\); print\\('jobs:', list\\(d['jobs'].keys\\(\\)\\)\\); print\\('deploy-web steps:', [s.get\\('name'\\) for s in d['jobs']['deploy-web']['steps']]\\)\")",
       "Bash(node -e ' *)",
       "Bash(npx --yes js-yaml .github/workflows/release.yml)",
-      "Bash(node -e \"const d=require\\('/tmp/wf.json'\\); console.log\\('jobs:', Object.keys\\(d.jobs\\)\\); console.log\\('deploy-web steps:', d.jobs['deploy-web'].steps.map\\(s=>s.name\\)\\);\")"
+      "Bash(node -e \"const d=require\\('/tmp/wf.json'\\); console.log\\('jobs:', Object.keys\\(d.jobs\\)\\); console.log\\('deploy-web steps:', d.jobs['deploy-web'].steps.map\\(s=>s.name\\)\\);\")",
+      "Bash(python3 -)",
+      "Bash(which psql *)"
     ]
   }
 }
