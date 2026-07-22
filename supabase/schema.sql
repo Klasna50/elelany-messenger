@@ -555,6 +555,235 @@ drop policy if exists "auth update chat-uploads" on storage.objects;
 create policy "auth update chat-uploads" on storage.objects
   for update to authenticated using (bucket_id = 'chat-uploads');
 
+-- ---------------------------------------------------------------------
+-- 8. CONTACT REQUESTS
+-- ---------------------------------------------------------------------
+-- Adding someone sends them a request; they accept or ignore. Kept here so
+-- this file alone provisions a complete backend.
+
+-- ---------------------------------------------------------------------
+-- 8a. Table
+-- ---------------------------------------------------------------------
+
+create table if not exists public.contact_requests (
+  id uuid primary key default gen_random_uuid(),
+  -- Point at profiles (not auth.users) so the app can embed the sender's
+  -- name and avatar in one query.
+  requester_id uuid not null references public.profiles (id) on delete cascade,
+  recipient_id uuid not null references public.profiles (id) on delete cascade,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  responded_at timestamptz,
+  constraint contact_requests_not_self check (requester_id <> recipient_id),
+  constraint contact_requests_status check (status in ('pending', 'accepted', 'ignored'))
+);
+
+-- One live request per direction; a re-send reuses the row.
+create unique index if not exists idx_contact_requests_pair
+  on public.contact_requests (requester_id, recipient_id);
+
+create index if not exists idx_contact_requests_recipient
+  on public.contact_requests (recipient_id, status);
+
+
+-- ---------------------------------------------------------------------
+-- 8b. Row level security
+-- ---------------------------------------------------------------------
+
+alter table public.contact_requests enable row level security;
+
+-- You can read only requests you sent or received. Writes go through the
+-- functions below, which validate before touching anything.
+drop policy if exists contact_requests_select on public.contact_requests;
+create policy contact_requests_select on public.contact_requests
+  for select to authenticated
+  using (requester_id = auth.uid() or recipient_id = auth.uid());
+
+
+-- ---------------------------------------------------------------------
+-- 8c. Send a request, addressed by email
+-- ---------------------------------------------------------------------
+-- security definer because it must look inside auth.users to resolve the
+-- email. It returns ONLY a status plus the matched person's display name --
+-- never an email, and never a list -- so this cannot be used to enumerate
+-- accounts. An exact, full-email match is required.
+
+create or replace function public.send_contact_request(target_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  me uuid := auth.uid();
+  target_id uuid;
+  target_name text;
+  existing public.contact_requests%rowtype;
+begin
+  if me is null then
+    return jsonb_build_object('status', 'unauthenticated');
+  end if;
+
+  if target_email is null or btrim(target_email) = '' then
+    return jsonb_build_object('status', 'invalid_email');
+  end if;
+
+  select u.id into target_id
+  from auth.users u
+  where lower(u.email) = lower(btrim(target_email))
+  limit 1;
+
+  if target_id is null then
+    return jsonb_build_object('status', 'no_account');
+  end if;
+
+  if target_id = me then
+    return jsonb_build_object('status', 'self');
+  end if;
+
+  select p.display_name into target_name from public.profiles p where p.id = target_id;
+
+  -- Already talking? Then there is nothing to request.
+  if exists (
+    select 1
+    from public.conversation_members mine
+    join public.conversation_members theirs on theirs.conversation_id = mine.conversation_id
+    join public.conversations c on c.id = mine.conversation_id
+    where mine.user_id = me and theirs.user_id = target_id and c.type = 'direct'
+  ) then
+    return jsonb_build_object('status', 'already_contacts', 'display_name', target_name);
+  end if;
+
+  -- They already asked you: tell the caller to answer that instead.
+  select * into existing
+  from public.contact_requests
+  where requester_id = target_id and recipient_id = me and status = 'pending';
+
+  if found then
+    return jsonb_build_object('status', 'incoming_pending', 'display_name', target_name);
+  end if;
+
+  -- Reuse our own earlier row if there is one (covers a previous ignore).
+  select * into existing
+  from public.contact_requests
+  where requester_id = me and recipient_id = target_id;
+
+  if found then
+    if existing.status = 'pending' then
+      return jsonb_build_object('status', 'already_sent', 'display_name', target_name);
+    end if;
+
+    update public.contact_requests
+    set status = 'pending', created_at = now(), responded_at = null
+    where id = existing.id;
+
+    return jsonb_build_object('status', 'sent', 'display_name', target_name);
+  end if;
+
+  insert into public.contact_requests (requester_id, recipient_id)
+  values (me, target_id);
+
+  return jsonb_build_object('status', 'sent', 'display_name', target_name);
+end;
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 8d. Accept or ignore a request
+-- ---------------------------------------------------------------------
+-- On accept this also creates the private chat and adds both people, so the
+-- conversation exists the moment the request is answered.
+
+create or replace function public.respond_to_contact_request(request_id uuid, accept boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_req public.contact_requests%rowtype;
+  v_pair_key text;
+  v_conversation_id uuid;
+  v_requester_name text;
+begin
+  if v_me is null then
+    return jsonb_build_object('status', 'unauthenticated');
+  end if;
+
+  select * into v_req from public.contact_requests where id = request_id;
+
+  if not found then
+    return jsonb_build_object('status', 'not_found');
+  end if;
+
+  if v_req.recipient_id <> v_me then
+    return jsonb_build_object('status', 'not_yours');
+  end if;
+
+  if v_req.status <> 'pending' then
+    return jsonb_build_object('status', 'already_answered');
+  end if;
+
+  if not accept then
+    update public.contact_requests
+    set status = 'ignored', responded_at = now()
+    where id = v_req.id;
+
+    return jsonb_build_object('status', 'ignored');
+  end if;
+
+  -- Byte-order sort, so this matches the app's [a, b].sort().join(":").
+  select string_agg(v, ':' order by v collate "C")
+  into v_pair_key
+  from unnest(array[v_req.requester_id::text, v_me::text]) as t(v);
+
+  select c.id into v_conversation_id
+  from public.conversations c
+  where c.direct_key = v_pair_key;
+
+  if v_conversation_id is null then
+    select p.display_name into v_requester_name
+    from public.profiles p
+    where p.id = v_req.requester_id;
+
+    insert into public.conversations (title, type, is_public, direct_key, owner_id, created_by)
+    values (coalesce(v_requester_name, 'Direct chat'), 'direct', false, v_pair_key, v_me, v_me)
+    returning id into v_conversation_id;
+  end if;
+
+  insert into public.conversation_members (conversation_id, user_id)
+  values (v_conversation_id, v_me), (v_conversation_id, v_req.requester_id)
+  on conflict (conversation_id, user_id) do nothing;
+
+  update public.contact_requests
+  set status = 'accepted', responded_at = now()
+  where id = v_req.id;
+
+  return jsonb_build_object('status', 'accepted', 'conversation_id', v_conversation_id);
+end;
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 8e. Permissions + realtime
+-- ---------------------------------------------------------------------
+
+grant execute on function public.send_contact_request(text) to authenticated;
+grant execute on function public.respond_to_contact_request(uuid, boolean) to authenticated;
+
+-- Delivers the request to the recipient's open app without a refresh.
+alter table public.contact_requests replica identity full;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.contact_requests;
+exception
+  when duplicate_object then null;
+end;
+$$;
+
+
 -- =====================================================================
 -- Done. Every table, policy, RPC, realtime channel and storage bucket
 -- the Elelany app calls is now provisioned.

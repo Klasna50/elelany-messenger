@@ -5,6 +5,12 @@ A real-time 1-to-1 and group messenger built with React + Vite + TypeScript and 
 receipts, rich-text composer, stickers, animated emojis, screenshot editor, file attachments,
 and 1-to-1 voice/video calls (WebRTC).
 
+> **Lost the project folder, or picking this up cold?** Start with
+> [`RECOVERY.md`](RECOVERY.md) — where everything lives, which secrets exist and
+> how to rebuild from nothing. For *why* the code looks the way it does, read
+> [`docs/project-notes.md`](docs/project-notes.md) before changing row level
+> security or the Electron window behaviour.
+
 ## 1. Prerequisites
 
 - Node.js 18+ and npm

@@ -78,7 +78,8 @@
       "Bash(node -e \"const d=require\\('/tmp/wf.json'\\); console.log\\('jobs:', Object.keys\\(d.jobs\\)\\); console.log\\('deploy-web steps:', d.jobs['deploy-web'].steps.map\\(s=>s.name\\)\\);\")",
       "Bash(python3 -)",
       "Bash(which psql *)",
-      "Bash(echo \"exit $?\")"
+      "Bash(echo \"exit $?\")",
+      "Bash(awk 'BEGIN{n=0} /\\\\$\\\\$/{n++} END{print \"dollar-quote markers:\", n, \\(n%2==0?\"\\(balanced\\)\":\"\\(UNBALANCED\\)\"\\)}' supabase/schema.sql)"
     ]
   }
 }
