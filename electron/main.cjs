@@ -289,6 +289,26 @@ function sendUpdateStatus(status, payload = {}) {
   }
 }
 
+// Installing an update requires the app to actually quit. Our close handler
+// normally cancels that (it hides the window to keep running in the
+// background), so we must flag a real quit and tear the tray down first,
+// otherwise "Restart" appears to do nothing and the update never installs.
+function restartToUpdate() {
+  app.isQuitting = true;
+
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.removeAllListeners("close");
+  }
+
+  // isSilent = false, isForceRunAfter = true -> relaunch once installed.
+  setImmediate(() => autoUpdater.quitAndInstall(false, true));
+}
+
 function initAutoUpdater() {
   if (isDev) return;
 
@@ -321,7 +341,7 @@ function initAutoUpdater() {
     });
 
     if (response === 0) {
-      setImmediate(() => autoUpdater.quitAndInstall());
+      restartToUpdate();
     }
   });
 
@@ -373,7 +393,7 @@ ipcMain.handle("elelany:check-for-updates", async () => {
     return { status: "error", message: String(error && error.message ? error.message : error) };
   }
 });
-ipcMain.on("elelany:restart-to-update", () => autoUpdater.quitAndInstall());
+ipcMain.on("elelany:restart-to-update", () => restartToUpdate());
 
 // ---------------------------------------------------------------------
 // App lifecycle

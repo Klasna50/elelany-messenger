@@ -29,6 +29,7 @@ type ComposerContext = {
   sourceMessageId: string;
   senderName: string;
   previewText: string;
+  previewImageUrl?: string;
 };
 
 type CallMode = "voice" | "video";
@@ -226,7 +227,7 @@ const RICH_TEXT_SIZE_OPTIONS: Array<{ label: string; value: string; helper: stri
 const RICH_EDITOR_ICON_CLASS = "rich-editor-svg";
 // 1.7 renders crisply on Windows too; the old 0.92 hairline looked faint/blurry
 // anywhere without macOS-grade subpixel smoothing.
-const RICH_EDITOR_ICON_STROKE = 1.7;
+const RICH_EDITOR_ICON_STROKE = 1.4;
 
 function RichBoldIcon() {
   return (
@@ -722,6 +723,15 @@ function AvatarCircle({
 }
 
 const REACTION_EMOJIS = ["❤️", "👍", "😂", "😍", "🙏", "🔥"];
+const REACTION_EMOJIS_KEY = "elelany_reaction_emojis_v1";
+
+// Palette offered when a user customises their 6 quick reactions.
+const REACTION_EMOJI_CHOICES = [
+  "❤️", "👍", "👎", "😂", "🤣", "😍", "🥰", "🙏", "🔥", "👏",
+  "🎉", "🥳", "😊", "😇", "😎", "🤩", "😅", "🤔", "🫡", "🙌",
+  "💪", "🤝", "✌️", "👌", "🫶", "💯", "⭐", "✅", "💖", "💐",
+  "😢", "😭", "😮", "😱", "😡", "😴", "🤗", "🤯",
+];
 const DELETE_MESSAGE_WINDOW_MS = 60 * 60 * 1000; // market standard: longer delete-for-everyone window
 const CHAT_UPLOAD_BUCKET = "chat-uploads";
 const MAX_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
@@ -942,9 +952,35 @@ function getMessagePreviewText(message: MessageRow): string {
   return "Message";
 }
 
+// Pull a picture out of a message (attachment photo, screenshot, sticker or
+// animated emoji) so quotes/answers can show a thumbnail instead of just text.
+function getMessageThumbnailUrl(message: MessageRow): string {
+  const html = message.body_html || "";
+  if (!html) return "";
+
+  const patterns = [
+    /<img\b[^>]*data-attachment-image[^>]*>/i,
+    /<img\b[^>]*data-screenshot-composer[^>]*>/i,
+    /<img\b[^>]*data-sticker[^>]*>/i,
+    /<img\b[^>]*data-animated-emoji[^>]*>/i,
+  ];
+
+  for (const pattern of patterns) {
+    const tag = html.match(pattern)?.[0];
+    const src = tag?.match(/\ssrc=["']([^"']+)["']/i)?.[1];
+    if (src) return src;
+  }
+
+  return "";
+}
+
 function buildContextBannerHtml(context: ComposerContext): string {
   const label = context.kind === "answer" ? "Answering" : "Quoted";
-  return `<div data-message-context="${context.kind}" data-source-message-id="${escapeHtml(context.sourceMessageId)}" style="border-left:3px solid var(--accent-300,#fdba74);background:color-mix(in srgb,var(--accent-50,#fff7ed) 82%,white);border-radius:14px;padding:8px 10px;margin-bottom:8px;color:#475569;font-size:13px;line-height:18px;"><div style="font-weight:700;color:#334155;margin-bottom:2px;">${label} ${escapeHtml(context.senderName)}</div><div>${escapeHtml(shortenText(context.previewText, 220))}</div></div>`;
+  const thumbnail = context.previewImageUrl
+    ? `<img src="${escapeHtml(context.previewImageUrl)}" alt="" style="width:44px;height:44px;flex-shrink:0;border-radius:10px;object-fit:cover;background:rgba(255,255,255,0.7);" />`
+    : "";
+
+  return `<div data-message-context="${context.kind}" data-source-message-id="${escapeHtml(context.sourceMessageId)}" style="display:flex;gap:10px;align-items:flex-start;border-left:3px solid var(--accent-300,#fdba74);background:color-mix(in srgb,var(--accent-50,#fff7ed) 82%,white);border-radius:14px;padding:8px 10px;margin-bottom:8px;color:#475569;font-size:13px;line-height:18px;">${thumbnail}<div style="min-width:0;"><div style="font-weight:700;color:#334155;margin-bottom:2px;">${label} ${escapeHtml(context.senderName)}</div><div>${escapeHtml(shortenText(context.previewText, 220))}</div></div></div>`;
 }
 
 function buildForwardedBannerHtml(): string {
@@ -1339,6 +1375,29 @@ function AuthScreen() {
     setStatus(error ? error.message : "");
   };
 
+  const sendPasswordReset = async () => {
+    setStatus("");
+
+    if (!email.trim()) {
+      setStatus("Type your email address above, then click 'Forgot password?' again.");
+      return;
+    }
+
+    // In the desktop app the page origin is file://, which Supabase can't redirect
+    // to, so recovery links always point at the web app.
+    const redirectTo = window.location.origin.startsWith("http")
+      ? window.location.origin
+      : "https://elelany-messenger.netlify.app";
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+
+    setStatus(
+      error
+        ? error.message
+        : "Reset link sent. Open the email, choose a new password, then sign in here with it. (Check spam if you don't see it.)"
+    );
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-rose-50 p-4">
       <div className="w-full max-w-md rounded-[28px] border border-orange-100 bg-white/96 p-6 shadow-xl">
@@ -1384,6 +1443,16 @@ function AuthScreen() {
           {mode === "sign-in" ? "Sign in" : "Create account"}
         </button>
 
+        {mode === "sign-in" ? (
+          <button
+            type="button"
+            className="mt-3 w-full text-center text-[14px] font-medium text-slate-500 underline-offset-2 hover:text-orange-600 hover:underline"
+            onClick={sendPasswordReset}
+          >
+            Forgot password?
+          </button>
+        ) : null}
+
         {status ? <div className="mt-4 rounded-2xl bg-orange-50 p-3 text-[15px] text-slate-600">{status}</div> : null}
       </div>
     </div>
@@ -1408,6 +1477,8 @@ function MessageBubble({
   onForward,
   messageRef,
   highlighted,
+  reactionEmojis,
+  onToggleReactionEmoji,
 }: {
   message: MessageRow;
   reactions: ReactionRow[];
@@ -1426,9 +1497,12 @@ function MessageBubble({
   onForward: (message: MessageRow) => void;
   messageRef?: (node: HTMLDivElement | null) => void;
   highlighted?: boolean;
+  reactionEmojis: string[];
+  onToggleReactionEmoji: (emoji: string) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [reactionCustomizeOpen, setReactionCustomizeOpen] = useState(false);
   const messageRootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1440,12 +1514,14 @@ function MessageBubble({
 
       setPickerOpen(false);
       setActionsOpen(false);
+      setReactionCustomizeOpen(false);
     };
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setPickerOpen(false);
         setActionsOpen(false);
+        setReactionCustomizeOpen(false);
       }
     };
 
@@ -1621,21 +1697,67 @@ function MessageBubble({
               </button>
 
               {pickerOpen ? (
-                <div className={`absolute top-1/2 z-30 flex w-[250px] -translate-y-1/2 flex-nowrap gap-1 rounded-[18px] border border-emerald-100 bg-white p-2 shadow-xl ${mine ? "right-full mr-2" : "left-full ml-2"}`}>
-                  {REACTION_EMOJIS.map((emoji) => (
+                <div className={`absolute top-1/2 z-30 w-[296px] -translate-y-1/2 rounded-[18px] border border-emerald-100 bg-white p-2 shadow-xl ${mine ? "right-full mr-2" : "left-full ml-2"}`}>
+                  <div className="flex flex-nowrap items-center gap-1">
+                    {reactionEmojis.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl bg-slate-50 px-1 text-[20px] leading-none transition hover:bg-emerald-50"
+                        onClick={() => {
+                          onReact(message.id, emoji);
+                          setPickerOpen(false);
+                          setActionsOpen(false);
+                          setReactionCustomizeOpen(false);
+                        }}
+                      >
+                        <TwemojiImage emoji={emoji} className="h-[23px] w-[23px] shrink-0" />
+                      </button>
+                    ))}
+
                     <button
-                      key={emoji}
                       type="button"
-                      className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl bg-slate-50 px-1 text-[20px] leading-none transition hover:bg-emerald-50"
-                      onClick={() => {
-                        onReact(message.id, emoji);
-                        setPickerOpen(false);
-                        setActionsOpen(false);
-                      }}
+                      className={`inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl text-[19px] font-bold leading-none transition ${reactionCustomizeOpen ? "bg-emerald-100 text-emerald-700" : "bg-slate-50 text-slate-500 hover:bg-emerald-50"}`}
+                      onClick={() => setReactionCustomizeOpen((open) => !open)}
+                      title="Choose your quick reactions"
+                      aria-label="Choose your quick reactions"
                     >
-                      <TwemojiImage emoji={emoji} className="h-[23px] w-[23px] shrink-0" />
+                      +
                     </button>
-                  ))}
+                  </div>
+
+                  {reactionCustomizeOpen ? (
+                    <div className="mt-2 border-t border-emerald-50 pt-2">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                          Your quick reactions
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-400">{reactionEmojis.length}/6</span>
+                      </div>
+
+                      <div className="grid max-h-[140px] grid-cols-9 gap-1 overflow-y-auto pr-1">
+                        {REACTION_EMOJI_CHOICES.map((emoji) => {
+                          const selected = reactionEmojis.includes(emoji);
+                          const full = reactionEmojis.length >= 6 && !selected;
+
+                          return (
+                            <button
+                              key={emoji}
+                              type="button"
+                              disabled={full}
+                              onClick={() => onToggleReactionEmoji(emoji)}
+                              className={`inline-flex h-[28px] w-[28px] items-center justify-center rounded-lg transition ${selected ? "bg-emerald-100 ring-1 ring-emerald-300" : full ? "opacity-30" : "hover:bg-slate-100"}`}
+                              title={selected ? "Remove from quick reactions" : full ? "Remove one first" : "Add to quick reactions"}
+                            >
+                              <TwemojiImage emoji={emoji} className="h-[17px] w-[17px] shrink-0" />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-1.5 text-[11px] text-slate-400">Tap to add or remove. These stay on this device.</div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1782,6 +1904,11 @@ export default function App() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [appVersion, setAppVersion] = useState("");
   const [updateStatusText, setUpdateStatusText] = useState("");
+  // Read once on mount so we never overwrite the saved set with the default.
+  const [reactionEmojis, setReactionEmojis] = useState<string[]>(() => {
+    const saved = loadStringList(REACTION_EMOJIS_KEY);
+    return saved.length ? saved.slice(0, 6) : REACTION_EMOJIS;
+  });
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   const [chatSearchResults, setChatSearchResults] = useState<MessageRow[]>([]);
@@ -2104,9 +2231,16 @@ export default function App() {
       setAuthChecked(true);
     });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       setAuthChecked(true);
+
+      // Arriving from a "reset password" email: drop the user straight into the
+      // place where they can set a new one.
+      if (event === "PASSWORD_RECOVERY") {
+        setSettingsOpen(true);
+        setPasswordStatus("Choose a new password below to finish resetting it.");
+      }
 
       if (!nextSession) {
         setOnlineUserIds(new Set());
@@ -2317,6 +2451,21 @@ export default function App() {
 
     return () => unsubscribe?.();
   }, []);
+
+  useEffect(() => {
+    saveStringList(REACTION_EMOJIS_KEY, reactionEmojis);
+  }, [reactionEmojis]);
+
+  const toggleReactionEmoji = (emoji: string) => {
+    setReactionEmojis((current) => {
+      if (current.includes(emoji)) {
+        // Always leave at least one quick reaction available.
+        return current.length > 1 ? current.filter((item) => item !== emoji) : current;
+      }
+
+      return current.length >= 6 ? current : [...current, emoji];
+    });
+  };
 
   const changePassword = async () => {
     setPasswordStatus("");
@@ -6827,12 +6976,16 @@ export default function App() {
   };
 
   const startComposerContext = (kind: "answer" | "quote", message: MessageRow) => {
+    const thumbnailUrl = getMessageThumbnailUrl(message);
+    const preview = getMessagePreviewText(message);
+
     setEditingMessage(null);
     setComposerContext({
       kind,
       sourceMessageId: message.id,
       senderName: message.profiles?.display_name || (message.sender_id === currentUserId ? "You" : "User"),
-      previewText: getMessagePreviewText(message),
+      previewText: thumbnailUrl && preview === "Attachment" ? "Photo" : preview,
+      previewImageUrl: thumbnailUrl,
     });
     setShowEmojiPicker(false);
     setShowStickerPicker(false);
@@ -7731,7 +7884,7 @@ export default function App() {
         .elelany-lato .composer-toolbar .rich-editor-svg {
           width: var(--rich-tool-icon) !important;
           height: var(--rich-tool-icon) !important;
-          stroke-width: 1.7 !important;
+          stroke-width: 1.4 !important;
           shape-rendering: geometricPrecision;
           vector-effect: non-scaling-stroke;
           transform: translateZ(0);
@@ -9046,7 +9199,7 @@ export default function App() {
             {settingsOpen ? (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={() => setSettingsOpen(false)}>
                 <div className="max-h-[86vh] w-full max-w-[520px] overflow-y-auto rounded-[30px] border border-slate-200 bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-                <div className="mb-4 flex items-center justify-between">
+                <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-4 flex items-center justify-between rounded-t-[30px] border-b border-slate-100 bg-white px-5 pb-3 pt-5">
                   <div>
                     <div className="text-[17px] font-bold text-slate-900">Settings</div>
                     <div className="text-[13px] text-slate-500">Customize your interface</div>
@@ -9582,6 +9735,8 @@ export default function App() {
                         onAnswer={startAnswerMessage}
                         onQuote={startQuoteMessage}
                         onForward={startForwardMessage}
+                        reactionEmojis={reactionEmojis}
+                        onToggleReactionEmoji={toggleReactionEmoji}
                         messageRef={(node) => {
                           messageRefs.current[String(message.id)] = node;
                         }}
@@ -10346,11 +10501,20 @@ export default function App() {
               <div className="min-w-0 flex-1">
                 {composerContext ? (
                   <div className="composer-action-banner mb-2 flex items-start justify-between gap-3 rounded-2xl border px-3 py-2">
-                    <div className="min-w-0">
-                      <div className="composer-action-banner-title text-[13px] font-semibold">
-                        {composerContext.kind === "answer" ? "Answering" : "Quoting"} {composerContext.senderName}
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      {composerContext.previewImageUrl ? (
+                        <img
+                          src={composerContext.previewImageUrl}
+                          alt=""
+                          className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                        />
+                      ) : null}
+                      <div className="min-w-0">
+                        <div className="composer-action-banner-title text-[13px] font-semibold">
+                          {composerContext.kind === "answer" ? "Answering" : "Quoting"} {composerContext.senderName}
+                        </div>
+                        <div className="mt-0.5 truncate text-[13px] text-slate-500">{composerContext.previewText}</div>
                       </div>
-                      <div className="mt-0.5 truncate text-[13px] text-slate-500">{composerContext.previewText}</div>
                     </div>
                     <button
                       type="button"
