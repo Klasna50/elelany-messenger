@@ -68,7 +68,14 @@
       "Bash(curl -sL \"https://github.com/Klasna50/elelany-messenger/releases/latest/download/latest.yml\")",
       "Bash(awk 'NR>=9199 && NR<=9420' src/App.tsx)",
       "Bash(echo \"=== tsc exit $? ===\")",
-      "Bash(echo \"tsc exit $?\")"
+      "Bash(echo \"tsc exit $?\")",
+      "Bash(curl -s \"https://elelany-messenger.netlify.app/\")",
+      "Bash(timeout 60 npx netlify-cli status)",
+      "Bash(npx netlify-cli *)",
+      "Bash(python3 -c \"import yaml,sys; d=yaml.safe_load\\(open\\('.github/workflows/release.yml'\\)\\); print\\('jobs:', list\\(d['jobs'].keys\\(\\)\\)\\); print\\('deploy-web steps:', [s.get\\('name'\\) for s in d['jobs']['deploy-web']['steps']]\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(npx --yes js-yaml .github/workflows/release.yml)",
+      "Bash(node -e \"const d=require\\('/tmp/wf.json'\\); console.log\\('jobs:', Object.keys\\(d.jobs\\)\\); console.log\\('deploy-web steps:', d.jobs['deploy-web'].steps.map\\(s=>s.name\\)\\);\")"
     ]
   }
 }

@@ -65,3 +65,43 @@ jobs:
           # Windows signing (optional; removes SmartScreen warning).
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+  # The website is the same bundle the desktop apps wrap, so it ships from the
+  # same tag. Without this the site silently falls behind the desktop apps,
+  # which is exactly what happened between v1.1.1 and v1.1.6.
+  deploy-web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      # Fail loudly rather than publishing a site with no Supabase keys, which
+      # looks like a working page that can never sign anyone in.
+      - name: Check the bundle has Supabase keys
+        run: |
+          if ! grep -rq "supabase.co" dist/assets/*.js; then
+            echo "::error::Built bundle contains no Supabase URL. Check the VITE_SUPABASE_* secrets."
+            exit 1
+          fi
+
+      - name: Deploy to Netlify
+        run: npx --yes netlify-cli@17 deploy --prod --dir=dist --message "${{ github.ref_name }}"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
