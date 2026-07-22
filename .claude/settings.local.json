@@ -77,7 +77,8 @@
       "Bash(npx --yes js-yaml .github/workflows/release.yml)",
       "Bash(node -e \"const d=require\\('/tmp/wf.json'\\); console.log\\('jobs:', Object.keys\\(d.jobs\\)\\); console.log\\('deploy-web steps:', d.jobs['deploy-web'].steps.map\\(s=>s.name\\)\\);\")",
       "Bash(python3 -)",
-      "Bash(which psql *)"
+      "Bash(which psql *)",
+      "Bash(echo \"exit $?\")"
     ]
   }
 }

@@ -14,6 +14,9 @@ type ChatListItem = {
   avatarUrl: string | null;
   isGroup: boolean;
   unreadCount: number;
+  // When this user joined. Messages older than this are not visible to them,
+  // so the chat can explain the gap instead of just looking empty.
+  joinedAt?: string | null;
 };
 
 type ChatSortOption = "recent" | "unread" | "az" | "groups" | "private";
@@ -2950,7 +2953,7 @@ export default function App() {
     try {
       const { data: memberships, error } = await supabase
         .from("conversation_members")
-        .select("conversation_id, conversations(*)")
+        .select("conversation_id, created_at, conversations(*)")
         .eq("user_id", session.user.id);
 
       if (error) {
@@ -2958,10 +2961,15 @@ export default function App() {
         return;
       }
 
-      const rows = (memberships || []) as unknown as Array<{ conversation_id: string; conversations: Conversation | null }>;
+      const rows = (memberships || []) as unknown as Array<{ conversation_id: string; created_at?: string | null; conversations: Conversation | null }>;
       const conversationRows = rows
         .map((item) => item.conversations)
         .filter((item): item is Conversation => Boolean(item));
+
+      const joinedAtByConversation = rows.reduce<Record<string, string | null>>((acc, row) => {
+        acc[row.conversation_id] = row.created_at || null;
+        return acc;
+      }, {});
 
       const { data: unreadRows, error: unreadError } = await supabase.rpc("get_unread_conversation_counts");
 
@@ -3021,6 +3029,7 @@ export default function App() {
             avatarUrl: isGroup ? getConversationAvatarUrl(conversation) : getAvatarUrl(otherUser),
             isGroup,
             unreadCount: unreadByConversation[conversation.id] || 0,
+            joinedAt: joinedAtByConversation[conversation.id] || null,
           } as ChatListItem;
         })
       );
@@ -8165,6 +8174,21 @@ export default function App() {
     setInviteStatus("Invite email opened in your mail app.");
   };
 
+  const activeChatItem = useMemo(
+    () => conversations.find((item) => item.conversation.id === activeConversation?.id) || null,
+    [conversations, activeConversation?.id]
+  );
+
+  // True only for someone added to an existing chat, so founding members never
+  // see the notice. A small margin absorbs the gap between a conversation row
+  // and its first membership row being written.
+  const joinedAfterConversationStarted = useMemo(() => {
+    if (!activeChatItem?.joinedAt || !activeConversation) return false;
+    const joined = new Date(activeChatItem.joinedAt).getTime();
+    const started = new Date(activeConversation.created_at).getTime();
+    return Number.isFinite(joined) && Number.isFinite(started) && joined - started > 60_000;
+  }, [activeChatItem?.joinedAt, activeConversation?.created_at, activeConversation]);
+
   // Contacts who are not already in the open group.
   const addableGroupContacts = useMemo(() => {
     const memberIds = new Set(activeMembers.map((member) => member.id));
@@ -10267,6 +10291,14 @@ export default function App() {
               {activeConversation ? (
                 <>
                   <div className="mb-3 text-center text-[17px] font-medium uppercase tracking-[0.2em] text-slate-400">{activeIsGroup ? "Group chat" : "Private chat"}</div>
+
+                  {joinedAfterConversationStarted ? (
+                    <div className="mb-3 flex justify-center">
+                      <div className="rounded-full bg-slate-50 px-4 py-1.5 text-center text-[13px] font-medium text-slate-500">
+                        You joined on {formatDateTime(activeChatItem!.joinedAt!)} — messages sent before that aren't shown.
+                      </div>
+                    </div>
+                  ) : null}
 
                   {messageFlowLoading && messages.length === 0 ? (
                     <div className="my-10 flex justify-center">

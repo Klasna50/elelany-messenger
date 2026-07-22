@@ -102,9 +102,22 @@ create index if not exists idx_call_signals_call on public.call_signals (call_id
 -- depend on these helpers; section 5 below recreates every policy, so the
 -- final state is complete. (Postgres cannot rename params or change the
 -- return type of a function via CREATE OR REPLACE.)
+drop function if exists public.conversation_member_since(uuid, uuid) cascade;
 drop function if exists public.is_conversation_member(uuid, uuid) cascade;
 drop function if exists public.is_conversation_creator(uuid, uuid) cascade;
 drop function if exists public.is_conversation_owner(uuid, uuid) cascade;
+
+create or replace function public.conversation_member_since(conv_id uuid, uid uuid)
+returns timestamptz
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select m.created_at
+  from public.conversation_members m
+  where m.conversation_id = conv_id and m.user_id = uid;
+$$;
 
 create or replace function public.is_conversation_member(conv_id uuid, uid uuid)
 returns boolean
@@ -188,12 +201,14 @@ as $$
   join public.conversation_members cm
     on cm.conversation_id = m.conversation_id and cm.user_id = auth.uid()
   where m.sender_id <> auth.uid()
+    and m.created_at >= cm.created_at          -- only since this person joined
     and not exists (
       select 1 from public.message_reads r
       where r.message_id = m.id and r.user_id = auth.uid()
     )
   group by m.conversation_id;
 $$;
+
 
 -- Mark every incoming message in a conversation as seen by the current user.
 create or replace function public.mark_conversation_seen(target_conversation_id uuid)
@@ -202,8 +217,12 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_joined_at timestamptz;
 begin
-  if not public.is_conversation_member(target_conversation_id, auth.uid()) then
+  v_joined_at := public.conversation_member_since(target_conversation_id, auth.uid());
+
+  if v_joined_at is null then
     return;
   end if;
 
@@ -212,15 +231,18 @@ begin
   from public.messages m
   where m.conversation_id = target_conversation_id
     and m.sender_id <> auth.uid()
+    and m.created_at >= v_joined_at
   on conflict (message_id, user_id) do nothing;
 
   update public.messages m
   set seen_at = now()
   where m.conversation_id = target_conversation_id
     and m.sender_id <> auth.uid()
+    and m.created_at >= v_joined_at
     and m.seen_at is null;
 end;
 $$;
+
 
 -- Per-message seen summaries for the current user's own messages (group read receipts).
 create or replace function public.get_message_seen_summaries(target_conversation_id uuid)
@@ -235,16 +257,16 @@ security definer
 set search_path = public
 stable
 as $$
-  with other_members as (
-    select count(*)::bigint as total
-    from public.conversation_members cm
-    where cm.conversation_id = target_conversation_id
-      and cm.user_id <> auth.uid()
-  )
   select
     m.id as message_id,
     count(distinct r.user_id)::bigint as seen_count,
-    (select total from other_members) as total_other_members,
+    (
+      select count(*)::bigint
+      from public.conversation_members cm
+      where cm.conversation_id = target_conversation_id
+        and cm.user_id <> auth.uid()
+        and cm.created_at <= m.created_at
+    ) as total_other_members,
     coalesce(
       array_agg(distinct p.display_name) filter (where p.display_name is not null),
       array[]::text[]
@@ -255,8 +277,9 @@ as $$
   left join public.profiles p on p.id = r.user_id
   where m.conversation_id = target_conversation_id
     and m.sender_id = auth.uid()
-  group by m.id;
+  group by m.id, m.created_at;
 $$;
+
 
 -- ---------------------------------------------------------------------
 -- 5. ROW LEVEL SECURITY
@@ -333,7 +356,11 @@ create policy members_delete on public.conversation_members
 drop policy if exists messages_select on public.messages;
 create policy messages_select on public.messages
   for select to authenticated
-  using (public.is_conversation_member(conversation_id, auth.uid()));
+  using (
+    -- Only what was said after this person joined. NULL for a non-member,
+    -- so this enforces membership on its own.
+    created_at >= public.conversation_member_since(conversation_id, auth.uid())
+  );
 
 drop policy if exists messages_insert on public.messages;
 create policy messages_insert on public.messages
