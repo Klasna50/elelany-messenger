@@ -58,7 +58,16 @@
       "Bash(curl -s -H 'User-Agent: __TRACKED_VAR__' 'https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap' -o /tmp/lato.css)",
       "Bash(node --check electron/preload.cjs)",
       "Bash(sed -i '' 's/const RICH_EDITOR_ICON_STROKE = 1.7;/const RICH_EDITOR_ICON_STROKE = 1.4;/' src/App.tsx)",
-      "Bash(sed -i '' 's/stroke-width: 1.7 !important;/stroke-width: 1.4 !important;/' src/App.tsx)"
+      "Bash(sed -i '' 's/stroke-width: 1.7 !important;/stroke-width: 1.4 !important;/' src/App.tsx)",
+      "Bash(gh run *)",
+      "Bash(curl -s \"https://api.github.com/repos/Klasna50/elelany-messenger/actions/runs?per_page=2\")",
+      "Bash(curl -s \"https://api.github.com/repos/Klasna50/elelany-messenger/actions/runs?per_page=1\")",
+      "Bash(curl -s \"https://api.github.com/repos/Klasna50/elelany-messenger/releases/latest\")",
+      "Bash(curl -s \"https://github.com/Klasna50/elelany-messenger/releases/latest/download/latest-mac.yml\")",
+      "Bash(curl -sL \"https://github.com/Klasna50/elelany-messenger/releases/latest/download/latest-mac.yml\")",
+      "Bash(curl -sL \"https://github.com/Klasna50/elelany-messenger/releases/latest/download/latest.yml\")",
+      "Bash(awk 'NR>=9199 && NR<=9420' src/App.tsx)",
+      "Bash(echo \"=== tsc exit $? ===\")"
     ]
   }
 }

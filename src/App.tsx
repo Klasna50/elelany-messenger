@@ -1553,6 +1553,15 @@ function MessageBubble({
   const localPending = (message as LocalPendingMessage).is_local_pending;
   const localStatus = (message as LocalPendingMessage).local_status;
 
+  // The tick only rides up onto the bubble when it is alone on the meta row —
+  // otherwise it would detach from the labels beside it, or sit on the reactions.
+  const tickStraddlesBubble =
+    mine &&
+    !reactions.length &&
+    !seenLabel &&
+    !editedAt &&
+    !(localPending && localStatus === "failed");
+
   return (
     <div
       ref={(node) => {
@@ -1653,8 +1662,15 @@ function MessageBubble({
         <div className={`mt-0.5 flex items-center gap-1.5 text-[12px] leading-none text-slate-400 ${mine ? "flex-row-reverse justify-end pr-3 text-right" : "justify-start pl-3 text-left"}`}>
           {mine ? (
             <>
-              <span className="inline-flex items-center" style={{ color: seenIconColor }} title={seenComplete ? "Seen by all" : seenByOther ? "Seen" : "Sent"} aria-label={seenComplete ? "Seen by all" : seenByOther ? "Seen" : "Sent"}>
-                <svg viewBox="0 0 18 12" className="h-[12px] w-[17px]" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+              <span
+                // Without reactions the tick rides up so it straddles the bubble's
+                // bottom edge; with reactions it stays put so it can't collide with them.
+                className={`inline-flex items-center ${tickStraddlesBubble ? "relative -top-[13px] z-10" : ""}`}
+                style={{ color: seenIconColor }}
+                title={seenComplete ? "Seen by all" : seenByOther ? "Seen" : "Sent"}
+                aria-label={seenComplete ? "Seen by all" : seenByOther ? "Seen" : "Sent"}
+              >
+                <svg viewBox="0 0 18 12" className="h-[14px] w-[20px]" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1.4 6.9 4.4 9.9 10.9 2.5" />
                   <path d="M6.4 7.1 9.2 9.9 16.8 1.9" />
                 </svg>
@@ -2042,6 +2058,8 @@ export default function App() {
   const composerResizeStartDistanceFromBottomRef = useRef<number | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
   const initialScrollTargetRef = useRef<"bottom" | string | null>(null);
+  const conversationOpenPinRef = useRef<number | null>(null);
+  const conversationOpenPinAbortRef = useRef<(() => void) | null>(null);
   const conversationsFetchInFlightRef = useRef(false);
   const conversationsFetchQueuedRef = useRef(false);
   const conversationsFetchRequestIdRef = useRef(0);
@@ -3647,12 +3665,60 @@ export default function App() {
     return incomingMessages[firstUnreadIndex]?.id || null;
   };
 
+  const stopConversationOpenPin = () => {
+    if (conversationOpenPinRef.current !== null) {
+      window.clearInterval(conversationOpenPinRef.current);
+      conversationOpenPinRef.current = null;
+    }
+    if (conversationOpenPinAbortRef.current) {
+      conversationOpenPinAbortRef.current();
+      conversationOpenPinAbortRef.current = null;
+    }
+  };
+
   const scrollConversationOnOpen = (conversationId: string, _loadedMessages: MessageRow[], _targetMessageId?: string | null) => {
     initialScrollTargetRef.current = "bottom";
-    window.setTimeout(() => {
-      if (activeConversationIdRef.current !== conversationId) return;
-      scrollToConversationBottom("smooth");
-    }, 140);
+    stopConversationOpenPin();
+
+    // A freshly opened chat keeps growing after the first paint — webfonts swap in,
+    // avatars and images decode. Scrolling once (as we used to) lands on a height that
+    // is already stale, which is why the very first chat after sign-in stayed at the top.
+    // Instead, hold the view at the bottom until the height stops changing.
+    const startedAt = Date.now();
+    let lastHeight = -1;
+    let stableTicks = 0;
+
+    const pin = () => {
+      if (activeConversationIdRef.current !== conversationId) {
+        stopConversationOpenPin();
+        return;
+      }
+
+      const scroller = messagesScrollRef.current;
+      if (!scroller) return;
+
+      scroller.scrollTop = scroller.scrollHeight;
+
+      if (scroller.scrollHeight === lastHeight) stableTicks += 1;
+      else stableTicks = 0;
+      lastHeight = scroller.scrollHeight;
+
+      if (stableTicks >= 4 || Date.now() - startedAt > 2500) stopConversationOpenPin();
+    };
+
+    // The moment the reader scrolls themselves, stop fighting them.
+    const releaseOnUserScroll = () => stopConversationOpenPin();
+    window.addEventListener("wheel", releaseOnUserScroll, { passive: true });
+    window.addEventListener("touchstart", releaseOnUserScroll, { passive: true });
+    window.addEventListener("keydown", releaseOnUserScroll);
+    conversationOpenPinAbortRef.current = () => {
+      window.removeEventListener("wheel", releaseOnUserScroll);
+      window.removeEventListener("touchstart", releaseOnUserScroll);
+      window.removeEventListener("keydown", releaseOnUserScroll);
+    };
+
+    window.requestAnimationFrame(pin);
+    conversationOpenPinRef.current = window.setInterval(pin, 60);
   };
 
   const ensureActivityMessageLoaded = async (conversationId: string, messageId: string, knownTargetMessage?: MessageRow | null) => {
@@ -3989,6 +4055,63 @@ export default function App() {
     setReactions(Array.from(deduped.values()));
   };
 
+  // Renders a reaction change straight from the realtime payload, with no round trip,
+  // so a reaction another user adds shows up on this side immediately.
+  const applyReactionRealtimeEvent = (payload: {
+    eventType: string;
+    new?: Partial<ReactionRow> | null;
+    old?: Partial<ReactionRow> | null;
+  }) => {
+    const conversationId = activeConversationIdRef.current;
+    if (!conversationId) return;
+
+    const messagesHere = messageCacheRef.current[conversationId] || [];
+    const belongsHere = (messageId?: string | null) =>
+      !!messageId && messagesHere.some((message) => String(message.id) === String(messageId));
+
+    if (payload.eventType === "DELETE") {
+      const removed = payload.old;
+      if (!removed?.id && !removed?.message_id) return;
+
+      setReactions((current) =>
+        current.filter((reaction) =>
+          removed.id
+            ? String(reaction.id) !== String(removed.id)
+            : !(
+                String(reaction.message_id) === String(removed.message_id) &&
+                String(reaction.user_id) === String(removed.user_id)
+              )
+        )
+      );
+      return;
+    }
+
+    const row = payload.new;
+    if (!row?.message_id || !row.user_id || !row.emoji) return;
+    if (!belongsHere(row.message_id)) return;
+
+    const nextReaction = {
+      id: String(row.id || `realtime-${row.message_id}-${row.user_id}`),
+      message_id: String(row.message_id),
+      user_id: String(row.user_id),
+      emoji: row.emoji,
+      created_at: row.created_at || new Date().toISOString(),
+      profiles: resolveSenderProfileLocally(conversationId, String(row.user_id)),
+    } as ReactionRow;
+
+    // One reaction per user per message, matching what the server enforces.
+    setReactions((current) => [
+      ...current.filter(
+        (reaction) =>
+          !(
+            String(reaction.message_id) === nextReaction.message_id &&
+            String(reaction.user_id) === nextReaction.user_id
+          )
+      ),
+      nextReaction,
+    ]);
+  };
+
   const fetchSeenSummaries = async (conversationId: string) => {
     if (!session) return seenSummariesCache[conversationId] || {};
 
@@ -4226,7 +4349,12 @@ export default function App() {
           schema: "public",
           table: "reactions",
         },
-        () => fetchReactions(activeConversation.id)
+        (payload) => {
+          // Paint the change from the payload first so the receiver sees it at once,
+          // then reconcile in the background (the payload carries no profile name).
+          applyReactionRealtimeEvent(payload);
+          void fetchReactions(activeConversation.id);
+        }
       )
       .on(
         "postgres_changes",
@@ -9198,8 +9326,10 @@ export default function App() {
 
             {settingsOpen ? (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={() => setSettingsOpen(false)}>
-                <div className="max-h-[86vh] w-full max-w-[520px] overflow-y-auto rounded-[30px] border border-slate-200 bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-                <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-4 flex items-center justify-between rounded-t-[30px] border-b border-slate-100 bg-white px-5 pb-3 pt-5">
+                <div className="flex max-h-[86vh] w-full max-w-[520px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+                {/* Header is a real flex row outside the scroll area, so scrolled
+                    content can never show through or under it. */}
+                <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
                   <div>
                     <div className="text-[17px] font-bold text-slate-900">Settings</div>
                     <div className="text-[13px] text-slate-500">Customize your interface</div>
@@ -9214,6 +9344,7 @@ export default function App() {
                   </button>
                 </div>
 
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 <div className="mb-4">
                   <div className="mb-2 text-[13px] font-bold uppercase tracking-[0.16em] text-slate-400">Theme color</div>
                   <div className="grid max-h-[190px] grid-cols-4 gap-2 overflow-y-auto pr-1">
@@ -9401,6 +9532,7 @@ export default function App() {
                       Check for updates
                     </button>
                   </div>
+                </div>
                 </div>
               </div>
             </div>
