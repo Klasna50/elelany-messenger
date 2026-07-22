@@ -32,8 +32,14 @@ function createMainWindow() {
     minHeight: 620,
     show: false,
     backgroundColor: "#ffffff",
+    // macOS: hide the OS title bar entirely and float the traffic lights in the
+    // app's own top-left corner. A draggable strip is injected below so the
+    // window can still be moved.
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 9 } }
+      : {}),
     // Windows/Linux: no menu ribbon (File/Edit/Window). Settings live in the
-    // in-app gear menu instead. macOS keeps its standard menu bar.
+    // in-app gear menu instead.
     autoHideMenuBar: process.platform !== "darwin",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -67,6 +73,28 @@ function createMainWindow() {
         box-shadow: none !important;
       }
     `);
+
+    // macOS only: reserve a slim strip at the top for the floating traffic
+    // lights, and make that strip drag the window (there is no title bar).
+    if (process.platform === "darwin") {
+      mainWindow.webContents.insertCSS(`
+        .app-bg { padding-top: 30px !important; }
+        .app-bg > div { height: calc(100vh - 30px) !important; }
+      `);
+
+      mainWindow.webContents
+        .executeJavaScript(
+          `(function () {
+             if (document.getElementById("elelany-drag-strip")) return;
+             var strip = document.createElement("div");
+             strip.id = "elelany-drag-strip";
+             strip.style.cssText =
+               "position:fixed;top:0;left:0;right:0;height:30px;z-index:2147483647;-webkit-app-region:drag;";
+             document.body.appendChild(strip);
+           })();`
+        )
+        .catch(() => undefined);
+    }
   });
 
   // External links (invite mailto:, docs, attachments) open in the real browser.

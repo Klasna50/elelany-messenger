@@ -224,14 +224,15 @@ const RICH_TEXT_SIZE_OPTIONS: Array<{ label: string; value: string; helper: stri
 
 
 const RICH_EDITOR_ICON_CLASS = "rich-editor-svg";
-const RICH_EDITOR_ICON_STROKE = 0.92;
+// 1.7 renders crisply on Windows too; the old 0.92 hairline looked faint/blurry
+// anywhere without macOS-grade subpixel smoothing.
+const RICH_EDITOR_ICON_STROKE = 1.7;
 
 function RichBoldIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 5.7h5.15a3.12 3.12 0 0 1 0 6.25H8z" />
-      <path d="M8 11.95h5.95a3.18 3.18 0 1 1 0 6.35H8z" />
-      <path d="M8 5.7v12.6" />
+      <path d="M7.5 5h5.6a3.4 3.4 0 0 1 0 6.8H7.5z" />
+      <path d="M7.5 11.8h6.3a3.6 3.6 0 0 1 0 7.2H7.5z" />
     </svg>
   );
 }
@@ -239,9 +240,9 @@ function RichBoldIcon() {
 function RichItalicIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 5.9h5.1" />
-      <path d="M6.9 18.1H12" />
-      <path d="M14.7 5.9 9.3 18.1" />
+      <path d="M17 5.5h-6" />
+      <path d="M13 18.5H7" />
+      <path d="M14.5 5.5 9.5 18.5" />
     </svg>
   );
 }
@@ -249,8 +250,8 @@ function RichItalicIcon() {
 function RichUnderlineIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7.8 5.8v5.25a4.2 4.2 0 0 0 8.4 0V5.8" />
-      <path d="M6.2 19.2h11.6" />
+      <path d="M7.5 5v5.8a4.5 4.5 0 0 0 9 0V5" />
+      <path d="M6 19.5h12" />
     </svg>
   );
 }
@@ -258,9 +259,9 @@ function RichUnderlineIcon() {
 function RichBulletListIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="5.7" cy="7" r="0.82" fill="currentColor" stroke="none" />
-      <circle cx="5.7" cy="12" r="0.82" fill="currentColor" stroke="none" />
-      <circle cx="5.7" cy="17" r="0.82" fill="currentColor" stroke="none" />
+      <circle cx="5.2" cy="7" r="1.05" fill="currentColor" stroke="none" />
+      <circle cx="5.2" cy="12" r="1.05" fill="currentColor" stroke="none" />
+      <circle cx="5.2" cy="17" r="1.05" fill="currentColor" stroke="none" />
       <path d="M9.6 7h9.2" />
       <path d="M9.6 12h9.2" />
       <path d="M9.6 17h9.2" />
@@ -271,17 +272,12 @@ function RichBulletListIcon() {
 function RichNumberedListIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5.2 6.4 6.45 5.55v4.75" />
-      <path d="M4.9 10.3h3" />
-      <path d="M4.85 13.15c.3-.74.9-1.18 1.62-1.18.86 0 1.48.52 1.48 1.28 0 .57-.34.98-1.05 1.48l-1.92 1.37h3.05" />
-      <path d="M4.75 18.05h2.9" />
-      <path d="M6.25 16.85v2.4" />
-      <path d="M10.4 7.15h8.3" />
-      <path d="M10.4 12.2h8.3" />
-      <path d="M10.4 17.25h8.3" />
-      <path d="M18.7 7.15h.05" />
-      <path d="M18.7 12.2h.05" />
-      <path d="M18.7 17.25h.05" />
+      <path d="M4.7 6 5.9 5.2V9" />
+      <path d="M4.5 11.1c.25-.5.75-.8 1.35-.8.7 0 1.2.42 1.2 1.02 0 .48-.3.82-.85 1.24L4.5 14h2.9" />
+      <path d="M4.6 15.6c.28-.32.72-.5 1.25-.5.75 0 1.25.4 1.25.98 0 .5-.42.85-1.05.85.72 0 1.2.36 1.2.92 0 .62-.55 1.05-1.35 1.05-.55 0-1.02-.18-1.3-.5" />
+      <path d="M10 7h8.8" />
+      <path d="M10 12h8.8" />
+      <path d="M10 17h8.8" />
     </svg>
   );
 }
@@ -289,9 +285,9 @@ function RichNumberedListIcon() {
 function RichTextColorIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6.9 18.1 11.25 5.9h1.5l4.35 12.2" />
-      <path d="M9.05 14.15h5.9" />
-      <path d="M5.8 20.1h12.4" />
+      <path d="M6.4 16.6 11 5.8h2l4.6 10.8" />
+      <path d="M8.4 13.1h7.2" />
+      <rect x="5.2" y="19.2" width="13.6" height="2.3" rx="1.15" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -299,10 +295,8 @@ function RichTextColorIcon() {
 function RichOverlayColorIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4.65" y="12.85" width="14.7" height="5.45" rx="1.7" fill="#fef3c7" stroke="#facc15" strokeWidth="0.55" opacity="0.95" />
-      <path d="M6.9 18.1 11.25 5.9h1.5l4.35 12.2" />
-      <path d="M9.05 14.15h5.9" />
-      <path d="M5.8 20.1h12.4" />
+      <path d="M6.2 14.6 14.8 6a2.25 2.25 0 0 1 3.2 3.2l-8.6 8.6H6.2z" />
+      <rect x="4.8" y="20" width="14.4" height="2.2" rx="1.1" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -310,12 +304,12 @@ function RichOverlayColorIcon() {
 function RichTextSizeIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4.5 6.2h9.5" />
-      <path d="M9.25 6.2v12" />
-      <path d="M7 18.2h4.5" />
-      <path d="M15 10.2h4.5" />
-      <path d="M17.25 10.2v8" />
-      <path d="M15.45 18.2h3.6" />
+      <path d="M3.8 6.6V5.2h9.4v1.4" />
+      <path d="M8.5 5.2v13.4" />
+      <path d="M6.4 18.6h4.2" />
+      <path d="M14.6 12.6v-1.2h6.2v1.2" />
+      <path d="M17.7 11.4v7.2" />
+      <path d="M16.2 18.6h3" />
     </svg>
   );
 }
@@ -323,21 +317,21 @@ function RichTextSizeIcon() {
 function RichScreenshotIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5.2 8.35c0-1.28.86-2.15 2.15-2.15h2.12l.72-1.22c.24-.42.62-.63 1.1-.63h1.42c.48 0 .86.21 1.1.63l.72 1.22h2.12c1.29 0 2.15.87 2.15 2.15v7.3c0 1.28-.86 2.15-2.15 2.15H7.35c-1.29 0-2.15-.87-2.15-2.15v-7.3Z" />
-      <path d="M12 9.35a3.05 3.05 0 1 1 0 6.1 3.05 3.05 0 0 1 0-6.1Z" />
-      <path d="M16.45 8.9h.08" />
-      <path d="M3.5 11.2V8.6c0-2.3 1.55-3.85 3.85-3.85" opacity="0.45" />
-      <path d="M20.5 12.8v2.6c0 2.3-1.55 3.85-3.85 3.85" opacity="0.45" />
+      <path d="M4.2 8.6V6.2a2 2 0 0 1 2-2h2.4" />
+      <path d="M15.4 4.2h2.4a2 2 0 0 1 2 2v2.4" />
+      <path d="M19.8 15.4v2.4a2 2 0 0 1-2 2h-2.4" />
+      <path d="M8.6 19.8H6.2a2 2 0 0 1-2-2v-2.4" />
+      <circle cx="12" cy="12" r="2.6" />
     </svg>
   );
 }
 
 function RichToolbarMenuIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={1.08} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="6.6" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="17.4" cy="12" r="1" fill="currentColor" stroke="none" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={RICH_EDITOR_ICON_CLASS} fill="none" stroke="currentColor" strokeWidth={RICH_EDITOR_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6.4" cy="12" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="17.6" cy="12" r="1.15" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -1580,11 +1574,11 @@ function MessageBubble({
           <div className="min-h-[4px]" />
         )}
 
-        <div className={`mt-1 flex items-center gap-1.5 text-[12px] leading-none text-slate-400 ${mine ? "flex-row-reverse justify-end pr-3 text-right" : "justify-start pl-3 text-left"}`}>
+        <div className={`mt-0.5 flex items-center gap-1.5 text-[12px] leading-none text-slate-400 ${mine ? "flex-row-reverse justify-end pr-3 text-right" : "justify-start pl-3 text-left"}`}>
           {mine ? (
             <>
               <span className="inline-flex items-center" style={{ color: seenIconColor }} title={seenComplete ? "Seen by all" : seenByOther ? "Seen" : "Sent"} aria-label={seenComplete ? "Seen by all" : seenByOther ? "Seen" : "Sent"}>
-                <svg viewBox="0 0 18 12" className="h-[10px] w-[15px]" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 18 12" className="h-[12px] w-[17px]" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1.4 6.9 4.4 9.9 10.9 2.5" />
                   <path d="M6.4 7.1 9.2 9.9 16.8 1.9" />
                 </svg>
@@ -1885,6 +1879,7 @@ export default function App() {
   const profileEditPopupRef = useRef<HTMLDivElement | null>(null);
   const stickerPackInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const chatSearchInputRef = useRef<HTMLInputElement | null>(null);
   const screenshotCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const screenshotPointerRef = useRef<ScreenshotPointerState | null>(null);
   const screenshotSnipPointerRef = useRef<{ active: boolean; startX: number; startY: number } | null>(null);
@@ -2413,6 +2408,41 @@ export default function App() {
     setChatSearchQuery("");
     setChatSearchResults([]);
   }, [activeConversation?.id]);
+
+  // Images/screenshots have zero height until they finish loading, so the
+  // auto-scroll that runs when a message arrives lands short and the picture is
+  // cut off. Re-pin to the bottom once each image actually loads (only when the
+  // user is already near the bottom, so we never yank them out of history).
+  useEffect(() => {
+    const scroller = messagesScrollRef.current;
+    if (!scroller || !activeConversation) return;
+
+    const handleMediaLoad = (event: Event) => {
+      if (!(event.target instanceof HTMLImageElement)) return;
+
+      const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      if (distanceFromBottom < 600) scrollToConversationBottom("auto");
+    };
+
+    // "load" doesn't bubble, so listen in the capture phase.
+    scroller.addEventListener("load", handleMediaLoad, true);
+    return () => scroller.removeEventListener("load", handleMediaLoad, true);
+  }, [activeConversation?.id]);
+
+  // Cmd/Ctrl + F opens the in-chat search (same as the magnifier button).
+  useEffect(() => {
+    const handleFindShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f") return;
+      if (!activeConversationIdRef.current) return;
+
+      event.preventDefault();
+      setChatSearchOpen(true);
+      window.setTimeout(() => chatSearchInputRef.current?.focus(), 40);
+    };
+
+    window.addEventListener("keydown", handleFindShortcut);
+    return () => window.removeEventListener("keydown", handleFindShortcut);
+  }, []);
 
   const openChatSearchResult = async (message: MessageRow) => {
     const conversationId = activeConversation?.id;
@@ -7701,7 +7731,7 @@ export default function App() {
         .elelany-lato .composer-toolbar .rich-editor-svg {
           width: var(--rich-tool-icon) !important;
           height: var(--rich-tool-icon) !important;
-          stroke-width: 0.92 !important;
+          stroke-width: 1.7 !important;
           shape-rendering: geometricPrecision;
           vector-effect: non-scaling-stroke;
           transform: translateZ(0);
@@ -9007,7 +9037,10 @@ export default function App() {
               title="Settings"
               aria-label="Settings"
             >
-              <span className="text-[34px] leading-none">⚙</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
             </button>
 
             {settingsOpen ? (
@@ -9355,6 +9388,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <input
                     autoFocus
+                    ref={chatSearchInputRef}
                     className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[15px] outline-none focus:border-emerald-300"
                     placeholder="Search messages in this chat…"
                     value={chatSearchQuery}
