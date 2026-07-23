@@ -10598,7 +10598,7 @@ export default function App() {
           </div>
 
           <div
-            className={`relative shrink-0 border-t border-slate-200 bg-white/80 px-4 py-4 transition sm:px-6 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
+            className={`composer-shell relative shrink-0 border-t border-slate-200 bg-white/80 px-4 py-4 transition sm:px-6 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
             onDragEnter={handleAttachmentDragEnter}
             onDragOver={handleAttachmentDragOver}
             onDragLeave={handleAttachmentDragLeave}
