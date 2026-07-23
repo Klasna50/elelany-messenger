@@ -727,6 +727,8 @@ function AvatarCircle({
 
 const REACTION_EMOJIS = ["❤️", "👍", "😂", "😍", "🙏", "🔥"];
 const REACTION_EMOJIS_KEY = "elelany_reaction_emojis_v1";
+// The 6 defaults plus up to 3 the user adds.
+const REACTION_EMOJIS_MAX = 9;
 
 // Palette offered when a user customises their 6 quick reactions.
 const REACTION_EMOJI_CHOICES = [
@@ -1329,6 +1331,79 @@ function makeDirectKey(a: string, b: string): string {
   return [a, b].sort().join(":");
 }
 
+// The desktop (Electron) bridge, exposed by electron/preload.cjs on both
+// window.elelany and window.electronAPI. Absent in a plain browser.
+type DesktopBridge = {
+  isDesktop?: boolean;
+  platform?: string;
+  setUnreadBadge?: (count: number, images?: { overlayDataUrl?: string; trayDataUrl?: string }) => void;
+};
+
+// Windows has no native dock badge, so the count is drawn here as a PNG and
+// handed to the main process (its nativeImage can decode PNG but not SVG).
+function drawUnreadOverlayPng(count: number): string {
+  const size = 32;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  ctx.fillStyle = "#ef4444";
+  ctx.beginPath();
+  ctx.arc(16, 16, 15, 0, Math.PI * 2);
+  ctx.fill();
+
+  const label = count > 99 ? "99+" : String(count);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `700 ${label.length > 2 ? 15 : label.length > 1 ? 19 : 22}px "Segoe UI", Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, 16, 18);
+
+  return canvas.toDataURL("image/png");
+}
+
+// The taskbar button disappears when the window is hidden to the tray, so the
+// tray icon itself gets the badge: the app tile with a red count dot.
+function drawUnreadTrayPng(count: number): string {
+  const size = 32;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  const r = 7;
+  ctx.fillStyle = "#fb923c";
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.arcTo(size, 0, size, size, r);
+  ctx.arcTo(size, size, 0, size, r);
+  ctx.arcTo(0, size, 0, 0, r);
+  ctx.arcTo(0, 0, size, 0, r);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `800 19px "Segoe UI", Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("E", 16, 18);
+
+  ctx.fillStyle = "#ef4444";
+  ctx.beginPath();
+  ctx.arc(24, 8, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  const label = count > 9 ? "9+" : String(count);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `700 ${label.length > 1 ? 8 : 11}px "Segoe UI", Arial, sans-serif`;
+  ctx.fillText(label, 24, 9);
+
+  return canvas.toDataURL("image/png");
+}
+
 function isMessengerTabActive(): boolean {
   return document.visibilityState === "visible" && document.hasFocus();
 }
@@ -1344,12 +1419,86 @@ function SplashScreen() {
   );
 }
 
+// Where the "remember me" credentials live, on this device only. Cleared on an
+// explicit sign-out (see clearRememberedLogin). Also see [[elelany-project]].
+const REMEMBER_LOGIN_KEY = "elelany_remember_login_v1";
+
+function loadRememberedLogin(): { email: string; password: string } | null {
+  try {
+    const raw = window.localStorage.getItem(REMEMBER_LOGIN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { email?: string; password?: string };
+    if (!parsed.email) return null;
+    return { email: parsed.email, password: parsed.password || "" };
+  } catch {
+    return null;
+  }
+}
+
+function saveRememberedLogin(email: string, password: string) {
+  try {
+    window.localStorage.setItem(REMEMBER_LOGIN_KEY, JSON.stringify({ email, password }));
+  } catch {
+    // Storage can be unavailable (private mode); remembering is best-effort.
+  }
+}
+
+function clearRememberedLogin() {
+  try {
+    window.localStorage.removeItem(REMEMBER_LOGIN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 function AuthScreen() {
+  const remembered = loadRememberedLogin();
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(remembered?.email || "");
+  const [password, setPassword] = useState(remembered?.password || "");
   const [displayName, setDisplayName] = useState("");
   const [status, setStatus] = useState("");
+  // Default on, so the common case is "stay signed in" — this also means a
+  // reinstall or an app update signs the user straight back in.
+  const [remember, setRemember] = useState(true);
+  const [autoSigningIn, setAutoSigningIn] = useState(Boolean(remembered?.email && remembered.password));
+  const autoAttemptedRef = useRef(false);
+
+  const signIn = async (targetEmail: string, targetPassword: string) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: targetEmail,
+      password: targetPassword,
+    });
+
+    if (error) {
+      // A saved-but-now-wrong password shouldn't trap the user in a retry loop.
+      if (!remember) clearRememberedLogin();
+      return error;
+    }
+
+    if (remember) saveRememberedLogin(targetEmail, targetPassword);
+    else clearRememberedLogin();
+    return null;
+  };
+
+  // If credentials were remembered, sign in on load without making the user
+  // click. Runs once; on failure it just reveals the prefilled form.
+  useEffect(() => {
+    if (autoAttemptedRef.current) return;
+    autoAttemptedRef.current = true;
+
+    if (!remembered?.email || !remembered.password) {
+      setAutoSigningIn(false);
+      return;
+    }
+
+    (async () => {
+      const error = await signIn(remembered.email, remembered.password);
+      if (error) setStatus(error.message);
+      setAutoSigningIn(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const submit = async () => {
     setStatus("");
@@ -1370,11 +1519,12 @@ function AuthScreen() {
         },
       });
 
+      if (!error && remember) saveRememberedLogin(email, password);
       setStatus(error ? error.message : "Account created. Check your email if confirmation is enabled.");
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const error = await signIn(email.trim(), password);
     setStatus(error ? error.message : "");
   };
 
@@ -1432,7 +1582,7 @@ function AuthScreen() {
         />
 
         <input
-          className="mb-4 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-200"
+          className="mb-3 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-orange-200"
           placeholder="Password"
           type="password"
           value={password}
@@ -1442,8 +1592,28 @@ function AuthScreen() {
           }}
         />
 
-        <button className="w-full rounded-2xl bg-orange-300 px-4 py-3 font-semibold text-white hover:bg-orange-400" onClick={submit}>
-          {mode === "sign-in" ? "Sign in" : "Create account"}
+        <label className="mb-4 flex cursor-pointer items-start gap-2 px-1 text-[14px] text-slate-600">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-orange-400"
+            checked={remember}
+            onChange={(e) => {
+              setRemember(e.target.checked);
+              if (!e.target.checked) clearRememberedLogin();
+            }}
+          />
+          <span>
+            Remember me on this device
+            <span className="block text-[12px] text-slate-400">Stay signed in and skip login next time. Only use on your own device.</span>
+          </span>
+        </label>
+
+        <button
+          className="w-full rounded-2xl bg-orange-300 px-4 py-3 font-semibold text-white hover:bg-orange-400 disabled:opacity-60"
+          onClick={submit}
+          disabled={autoSigningIn}
+        >
+          {autoSigningIn ? "Signing in…" : mode === "sign-in" ? "Sign in" : "Create account"}
         </button>
 
         {mode === "sign-in" ? (
@@ -1716,8 +1886,8 @@ function MessageBubble({
               </button>
 
               {pickerOpen ? (
-                <div className={`absolute top-1/2 z-30 w-[296px] -translate-y-1/2 rounded-[18px] border border-emerald-100 bg-white p-2 shadow-xl ${mine ? "right-full mr-2" : "left-full ml-2"}`}>
-                  <div className="flex flex-nowrap items-center gap-1">
+                <div className={`absolute top-1/2 z-30 w-[324px] -translate-y-1/2 rounded-[18px] border border-emerald-100 bg-white p-2 shadow-xl ${mine ? "right-full mr-2" : "left-full ml-2"}`}>
+                  <div className="flex flex-wrap items-center gap-1">
                     {reactionEmojis.map((emoji) => (
                       <button
                         key={emoji}
@@ -1751,13 +1921,13 @@ function MessageBubble({
                         <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
                           Your quick reactions
                         </span>
-                        <span className="text-[11px] font-semibold text-slate-400">{reactionEmojis.length}/6</span>
+                        <span className="text-[11px] font-semibold text-slate-400">{reactionEmojis.length}/{REACTION_EMOJIS_MAX}</span>
                       </div>
 
                       <div className="grid max-h-[140px] grid-cols-9 gap-1 overflow-y-auto pr-1">
                         {REACTION_EMOJI_CHOICES.map((emoji) => {
                           const selected = reactionEmojis.includes(emoji);
-                          const full = reactionEmojis.length >= 6 && !selected;
+                          const full = reactionEmojis.length >= REACTION_EMOJIS_MAX && !selected;
 
                           return (
                             <button
@@ -1774,7 +1944,11 @@ function MessageBubble({
                         })}
                       </div>
 
-                      <div className="mt-1.5 text-[11px] text-slate-400">Tap to add or remove. These stay on this device.</div>
+                      <div className="mt-1.5 text-[11px] text-slate-400">
+                        {reactionEmojis.length >= REACTION_EMOJIS_MAX
+                          ? `Full (${REACTION_EMOJIS_MAX}). Tap a highlighted one to remove it.`
+                          : `Tap to add up to ${REACTION_EMOJIS_MAX - reactionEmojis.length} more. These stay on this device.`}
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -1930,7 +2104,7 @@ export default function App() {
   // Read once on mount so we never overwrite the saved set with the default.
   const [reactionEmojis, setReactionEmojis] = useState<string[]>(() => {
     const saved = loadStringList(REACTION_EMOJIS_KEY);
-    return saved.length ? saved.slice(0, 6) : REACTION_EMOJIS;
+    return saved.length ? saved.slice(0, REACTION_EMOJIS_MAX) : REACTION_EMOJIS;
   });
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
@@ -2496,7 +2670,7 @@ export default function App() {
         return current.length > 1 ? current.filter((item) => item !== emoji) : current;
       }
 
-      return current.length >= 6 ? current : [...current, emoji];
+      return current.length >= REACTION_EMOJIS_MAX ? current : [...current, emoji];
     });
   };
 
@@ -2741,10 +2915,7 @@ export default function App() {
     activeConversationIdRef.current = null;
 
     // Don't leave the previous account's unread count on the app icon.
-    const desktop = window as unknown as {
-      elelany?: { setUnreadBadge?: (count: number) => void };
-      electronAPI?: { setUnreadBadge?: (count: number) => void };
-    };
+    const desktop = window as unknown as { elelany?: DesktopBridge; electronAPI?: DesktopBridge };
     (desktop.elelany?.setUnreadBadge || desktop.electronAPI?.setUnreadBadge)?.(0);
   };
 
@@ -3393,11 +3564,23 @@ export default function App() {
 
   useEffect(() => {
     const desktop = window as unknown as {
-      elelany?: { setUnreadBadge?: (count: number) => void };
-      electronAPI?: { setUnreadBadge?: (count: number) => void };
+      elelany?: DesktopBridge;
+      electronAPI?: DesktopBridge;
     };
-    const setUnreadBadge = desktop.elelany?.setUnreadBadge || desktop.electronAPI?.setUnreadBadge;
-    setUnreadBadge?.(totalUnreadCount);
+    const bridge = desktop.elelany || desktop.electronAPI;
+    if (!bridge?.setUnreadBadge) return;
+
+    // macOS/Linux use the native dock badge (no image needed). Windows can't,
+    // so we hand it PNGs drawn here — nativeImage in the main process can't
+    // rasterize SVG.
+    if (totalUnreadCount > 0 && bridge.platform === "win32") {
+      bridge.setUnreadBadge(totalUnreadCount, {
+        overlayDataUrl: drawUnreadOverlayPng(totalUnreadCount),
+        trayDataUrl: drawUnreadTrayPng(totalUnreadCount),
+      });
+    } else {
+      bridge.setUnreadBadge(totalUnreadCount);
+    }
   }, [totalUnreadCount]);
 
   const deleteChatFromList = async (item: ChatListItem) => {
@@ -9255,7 +9438,7 @@ export default function App() {
                 >
                   +
                 </button>
-                <button className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[15px]" onClick={() => supabase.auth.signOut()}>
+                <button className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[15px]" onClick={() => { clearRememberedLogin(); supabase.auth.signOut(); }}>
                   Sign out
                 </button>
               </div>
@@ -9594,9 +9777,7 @@ export default function App() {
                                 ) : null}
                               </div>
                               <div className={`truncate text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}>
-                                {manuallyUnread ? (
-                                    <TwemojiText value={`${muted ? "Muted • " : ""}Marked as unread`} />
-                                  ) : lastAnimatedEmojiPreview ? (
+                                {lastAnimatedEmojiPreview ? (
                                     <span className="inline-flex items-center gap-2">
                                       {muted ? <span>Muted •</span> : null}
                                       <img
@@ -10098,7 +10279,7 @@ export default function App() {
                   </>
                 ) : null}
 
-                <button className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[15px] md:hidden" onClick={() => supabase.auth.signOut()}>
+                <button className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[15px] md:hidden" onClick={() => { clearRememberedLogin(); supabase.auth.signOut(); }}>
                   Sign out
                 </button>
               </div>

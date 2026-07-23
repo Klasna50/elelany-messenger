@@ -14,8 +14,11 @@ const api = {
   zoom: (action) => ipcRenderer.invoke("elelany:zoom", action),
   getZoom: () => ipcRenderer.invoke("elelany:get-zoom"),
 
-  // Unread count shown on the dock (macOS) or taskbar icon (Windows).
-  setUnreadBadge: (count) => ipcRenderer.send("elelany:set-unread-badge", count),
+  // Unread count shown on the dock (macOS) or taskbar/tray icon (Windows).
+  // The renderer pre-renders the PNGs on a canvas, because Electron's
+  // nativeImage cannot rasterize an SVG data URL — the earlier SVG approach
+  // produced an empty image and nothing showed on Windows.
+  setUnreadBadge: (count, images) => ipcRenderer.send("elelany:set-unread-badge", { count, ...(images || {}) }),
 
   // Version + updates.
   getVersion: () => ipcRenderer.invoke("elelany:get-version"),

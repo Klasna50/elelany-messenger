@@ -163,26 +163,16 @@ function createTray() {
 // Unread badge on the app icon
 // ---------------------------------------------------------------------
 
-// Windows has no dock badge, so we draw the red dot ourselves and hang it on
-// the taskbar button as an overlay icon. Built as an SVG data URL so there is
-// no extra asset to ship and it stays sharp at any scale.
-function buildOverlayIcon(count) {
-  const label = count > 99 ? "99+" : String(count);
-  const fontSize = label.length > 2 ? 15 : label.length > 1 ? 18 : 21;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-      <circle cx="16" cy="16" r="15" fill="#ef4444"/>
-      <text x="16" y="16" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif"
-            font-size="${fontSize}" font-weight="700" text-anchor="middle"
-            dominant-baseline="central">${label}</text>
-    </svg>`;
+// The unread badge. macOS/Linux get a native dock/launcher count. Windows has
+// neither, so the renderer draws PNGs on a canvas (Electron's nativeImage
+// cannot rasterize SVG) and we hang them on the taskbar button and, when the
+// window is hidden to the tray, on the tray icon.
+function setUnreadBadge(payload) {
+  const data = payload && typeof payload === "object" ? payload : { count: payload };
+  const count = Math.max(0, Math.floor(Number(data.count) || 0));
 
-  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
-}
-
-function setUnreadBadge(rawCount) {
-  const count = Math.max(0, Math.floor(Number(rawCount) || 0));
-
-  // macOS/Linux: the dock badge is built in.
+  // macOS/Linux: native dock/launcher badge. Works in every state, including
+  // while the window is hidden.
   if (typeof app.setBadgeCount === "function") {
     try {
       app.setBadgeCount(count);
@@ -191,21 +181,30 @@ function setUnreadBadge(rawCount) {
     }
   }
 
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-
-  if (process.platform === "win32") {
-    mainWindow.setOverlayIcon(
-      count > 0 ? buildOverlayIcon(count) : null,
-      count > 0 ? `${count} unread message${count === 1 ? "" : "s"}` : ""
-    );
+  if (process.platform === "win32" && mainWindow && !mainWindow.isDestroyed()) {
+    let overlay = null;
+    if (count > 0 && data.overlayDataUrl) {
+      const img = nativeImage.createFromDataURL(data.overlayDataUrl);
+      if (!img.isEmpty()) overlay = img;
+    }
+    mainWindow.setOverlayIcon(overlay, count > 0 ? `${count} unread message${count === 1 ? "" : "s"}` : "");
   }
 
+  // The taskbar button vanishes when the window is hidden on Windows, so the
+  // tray icon carries the badge in the background.
   if (tray) {
+    if (process.platform === "win32" && count > 0 && data.trayDataUrl) {
+      const trayImg = nativeImage.createFromDataURL(data.trayDataUrl);
+      if (!trayImg.isEmpty()) tray.setImage(trayImg);
+    } else {
+      const base = nativeImage.createFromPath(path.join(__dirname, "tray.png"));
+      if (!base.isEmpty()) tray.setImage(base);
+    }
     tray.setToolTip(count > 0 ? `Elelany — ${count} unread` : "Elelany");
   }
 }
 
-ipcMain.on("elelany:set-unread-badge", (_event, count) => setUnreadBadge(count));
+ipcMain.on("elelany:set-unread-badge", (_event, payload) => setUnreadBadge(payload));
 
 // ---------------------------------------------------------------------
 // Screenshot: capture just this app window (no OS permission needed)
