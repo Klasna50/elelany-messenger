@@ -89,7 +89,16 @@
       "Bash(sort -u -t: -k2)",
       "Bash(curl -s \"https://api.github.com/repos/Klasna50/elelany-messenger/releases/tags/v1.2.0\")",
       "Bash(node -e \"const {nativeImage}=require\\('electron'\\);\")",
-      "Bash(echo \"=== exit $? ===\")"
+      "Bash(echo \"=== exit $? ===\")",
+      "Bash(sips -g pixelWidth -g pixelHeight build/icon.png)",
+      "Bash(mkdir -p public)",
+      "Bash(sips -z 192 192 build/icon.png --out public/pwa-192.png)",
+      "Bash(sips -z 512 512 build/icon.png --out public/pwa-512.png)",
+      "Bash(sips -z 180 180 build/icon.png --out public/apple-touch-icon.png)",
+      "Bash(sips -z 32 32 build/icon.png --out public/favicon-32.png)",
+      "Bash(node -e \"console.log\\('vite-plugin-pwa', require\\('./node_modules/vite-plugin-pwa/package.json'\\).version\\)\")",
+      "Bash(lsof -ti:4173)",
+      "Bash(xargs kill)"
     ]
   }
 }
