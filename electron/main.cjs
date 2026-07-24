@@ -86,7 +86,12 @@ function createMainWindow() {
     // window since there is no title bar.
     if (process.platform === "darwin") {
       mainWindow.webContents.insertCSS(`
-        .app-bg > div { height: 100vh !important; padding-top: 30px !important; }
+        .app-bg > div { height: 100vh !important; }
+        /* Put the traffic-light clearance inside EACH panel so the strip takes
+           that panel's own colour — grey above the sidebar, white above the
+           chat/composer — with no seam. */
+        .app-bg > div > aside,
+        .app-bg > div > main { padding-top: 30px !important; }
       `);
 
       mainWindow.webContents
