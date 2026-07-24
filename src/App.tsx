@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import type { ContactRequestRow, Conversation, MessageRow, Profile, ReactionRow } from "./types";
+import { ANIMATED_EMOJI_META } from "./animatedEmojiMeta";
 
 type ChatListItem = {
   conversation: Conversation;
@@ -1061,6 +1062,23 @@ function getAnimatedEmojiCategory(item: AnimatedEmojiItem): string {
   if (haystack.includes("party") || haystack.includes("celebration") || haystack.includes("gift") || haystack.includes("star")) return "Celebration";
   if (haystack.includes("cute") || haystack.includes("bear") || haystack.includes("animal")) return "Cute";
   return "More";
+}
+
+// The manifest names every file by its Unicode codepoint (label === the hex
+// id), so it carries no category and nothing to search by. We enrich each item
+// from ANIMATED_EMOJI_META (generated offline from Unicode names) so the picker
+// can group and search them. Items with no metadata still work, just uncategorised.
+function enrichAnimatedEmoji(item: AnimatedEmojiItem): AnimatedEmojiItem {
+  const meta = ANIMATED_EMOJI_META[item.id];
+  if (!meta) return item;
+  const name = meta.n;
+  return {
+    ...item,
+    label: name,
+    category: item.category || meta.c,
+    // Split the name into words so a search like "heart" or "pizza" matches.
+    tags: [...(item.tags || []), ...name.toLowerCase().split(/\s+/)],
+  };
 }
 
 function isAnimatedEmojiOnlyHtml(html: string): boolean {
@@ -5169,7 +5187,7 @@ export default function App() {
         if (!response.ok) throw new Error("Could not load animated emojis.");
         const data = (await response.json()) as AnimatedEmojiItem[];
         if (!isCancelled) {
-          setAnimatedEmojiItems(Array.isArray(data) ? data : []);
+          setAnimatedEmojiItems(Array.isArray(data) ? data.map(enrichAnimatedEmoji) : []);
         }
       } catch (error) {
         console.error(error);
@@ -10595,7 +10613,7 @@ export default function App() {
           </div>
 
           <div
-            className={`composer-shell relative flex shrink-0 flex-col border-t border-slate-200 bg-white/80 px-4 py-4 transition sm:px-6 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
+            className={`composer-shell relative flex shrink-0 flex-col bg-white/80 px-4 py-4 transition sm:px-6 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
             onDragEnter={handleAttachmentDragEnter}
             onDragOver={handleAttachmentDragOver}
             onDragLeave={handleAttachmentDragLeave}

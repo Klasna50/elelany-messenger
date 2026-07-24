@@ -99,7 +99,12 @@
       "Bash(node -e \"console.log\\('vite-plugin-pwa', require\\('./node_modules/vite-plugin-pwa/package.json'\\).version\\)\")",
       "Bash(lsof -ti:4173)",
       "Bash(xargs kill)",
-      "Bash(awk -F: '$1 > 10650 && $1 < 11000')"
+      "Bash(awk -F: '$1 > 10650 && $1 < 11000')",
+      "Bash(curl -s \"https://ddsuhlptcpihdmcwacns.supabase.co/storage/v1/object/public/animated-emojis/manifest.json\" -o /tmp/ae-manifest.json)",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);print\\(len\\(d\\)\\)\")",
+      "Bash(echo \"count: $\\(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);print\\(len\\(d\\)\\)\"\\)\")",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);[print\\(json.dumps\\(x\\)\\) for x in d[:3]]\")",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);ks=set\\(\\);[ks.update\\(x.keys\\(\\)\\) for x in d];print\\(sorted\\(ks\\)\\)\")"
     ]
   }
 }
