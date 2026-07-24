@@ -1441,10 +1441,35 @@ function SplashScreen() {
 
 // Where the "remember me" credentials live, on this device only. Cleared on an
 // explicit sign-out (see clearRememberedLogin). Also see [[elelany-project]].
+// A `position: fixed` element is positioned relative to the nearest ancestor
+// that establishes a containing block (any transform / filter / backdrop-filter
+// / will-change / contain), NOT the viewport. The app shell uses backdrop-blur,
+// so we must measure that ancestor's offset and work in its coordinate system —
+// otherwise the popover jumps by that offset the moment it goes fixed.
+function getContainingBlockOffset(el: HTMLElement): { x: number; y: number } {
+  let node = el.parentElement;
+  while (node && node !== document.body) {
+    const s = window.getComputedStyle(node);
+    const backdrop = s.backdropFilter || (s as unknown as { webkitBackdropFilter?: string }).webkitBackdropFilter || "none";
+    if (
+      s.transform !== "none" ||
+      s.perspective !== "none" ||
+      (s.filter && s.filter !== "none") ||
+      (backdrop && backdrop !== "none") ||
+      (s.willChange && (s.willChange.includes("transform") || s.willChange.includes("filter"))) ||
+      (s.contain && /paint|layout|strict|content/.test(s.contain))
+    ) {
+      const r = node.getBoundingClientRect();
+      return { x: r.left, y: r.top };
+    }
+    node = node.parentElement;
+  }
+  return { x: 0, y: 0 };
+}
+
 // Makes a popover draggable by its header and remembers where the user left it
-// (per storageKey, in localStorage). Until first dragged it renders wherever its
-// classes place it (anchored to the composer); after a drag it floats at the
-// saved screen position and reopens there next time.
+// (per storageKey, in localStorage). Positions are stored in the containing
+// block's coordinate system so `position: fixed` reproduces them exactly.
 function useDraggablePopover(storageKey: string) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
@@ -1463,12 +1488,16 @@ function useDraggablePopover(storageKey: string) {
     const onResize = () => {
       const el = ref.current;
       if (!el) return;
+      const cb = getContainingBlockOffset(el);
       const w = el.offsetWidth;
       const h = el.offsetHeight;
       setPos((p) => {
         if (!p) return p;
-        const nx = Math.min(Math.max(8, p.x), Math.max(8, window.innerWidth - w - 8));
-        const ny = Math.min(Math.max(8, p.y), Math.max(8, window.innerHeight - h - 8));
+        // p is in containing-block coords; clamp its viewport position, convert back.
+        const vx = Math.min(Math.max(8, p.x + cb.x), Math.max(8, window.innerWidth - w - 8));
+        const vy = Math.min(Math.max(8, p.y + cb.y), Math.max(8, window.innerHeight - h - 8));
+        const nx = vx - cb.x;
+        const ny = vy - cb.y;
         return nx === p.x && ny === p.y ? p : { x: nx, y: ny };
       });
     };
@@ -1484,16 +1513,20 @@ function useDraggablePopover(storageKey: string) {
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
+    const cb = getContainingBlockOffset(el);
     const offsetX = event.clientX - rect.left;
     const offsetY = event.clientY - rect.top;
     const width = rect.width;
     const height = rect.height;
-    setPos({ x: rect.left, y: rect.top });
+
+    // Seed the fixed position at the current on-screen spot, expressed in the
+    // containing block's coordinates → no jump.
+    setPos({ x: rect.left - cb.x, y: rect.top - cb.y });
 
     const onMove = (e: PointerEvent) => {
-      const nx = Math.min(Math.max(8, e.clientX - offsetX), Math.max(8, window.innerWidth - width - 8));
-      const ny = Math.min(Math.max(8, e.clientY - offsetY), Math.max(8, window.innerHeight - height - 8));
-      setPos({ x: nx, y: ny });
+      const vx = Math.min(Math.max(8, e.clientX - offsetX), Math.max(8, window.innerWidth - width - 8));
+      const vy = Math.min(Math.max(8, e.clientY - offsetY), Math.max(8, window.innerHeight - height - 8));
+      setPos({ x: vx - cb.x, y: vy - cb.y });
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -2308,6 +2341,7 @@ export default function App() {
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [typingUserName, setTypingUserName] = useState("");
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const directChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSentRef = useRef(0);
@@ -4198,6 +4232,25 @@ export default function App() {
     return visibleMessages;
   };
 
+  // Removes a message from the local cache and the visible list. Essential for
+  // deletion: mergeMessages() unions old + new, so a message left in the cache
+  // would be re-added on the next refetch. Used by the delete action and by the
+  // realtime DELETE / broadcast handlers.
+  const purgeMessageLocally = (conversationId: string, messageId: string) => {
+    const id = String(messageId);
+    const drop = (list: MessageRow[]) => list.filter((message) => String(message.id) !== id);
+
+    messageCacheRef.current = {
+      ...messageCacheRef.current,
+      [conversationId]: drop(messageCacheRef.current[conversationId] || []),
+    };
+    setMessageCache((current) => ({ ...current, [conversationId]: drop(current[conversationId] || []) }));
+
+    if (activeConversationIdRef.current === conversationId) {
+      setMessages((current) => drop(current));
+    }
+  };
+
   const getUnreadSeparatorMessageId = (loadedMessages: MessageRow[], unreadCount: number) => {
     if (unreadCount < 1) return null;
 
@@ -4823,12 +4876,7 @@ export default function App() {
             : true;
 
           if (payload.eventType === "DELETE") {
-            const nextMessages = (messageCacheRef.current[conversationId] || []).filter(
-              (message) => String(message.id) !== changedMessageId
-            );
-            messageCacheRef.current = { ...messageCacheRef.current, [conversationId]: nextMessages };
-            setMessageCache((current) => ({ ...current, [conversationId]: nextMessages }));
-            if (activeConversationIdRef.current === conversationId) setMessages(nextMessages);
+            purgeMessageLocally(conversationId, changedMessageId);
             return;
           }
 
@@ -4909,9 +4957,19 @@ export default function App() {
           void fetchConversations();
         }
       )
+      // Reliable delete signal: postgres_changes DELETE events can be dropped by
+      // realtime RLS, so the deleter also broadcasts here. Every open client
+      // (including the deleter's other tabs) removes the message on receipt.
+      .on("broadcast", { event: "message-deleted" }, (payload) => {
+        const deletedId = String((payload?.payload as { id?: string } | undefined)?.id || "");
+        if (deletedId) purgeMessageLocally(activeConversation.id, deletedId);
+      })
       .subscribe();
 
+    directChannelRef.current = channel;
+
     return () => {
+      directChannelRef.current = null;
       supabase.removeChannel(channel);
     };
   }, [activeConversation?.id]);
@@ -7472,15 +7530,17 @@ export default function App() {
     const confirmed = window.confirm("Delete this message for everyone?");
     if (!confirmed) return;
 
-    // Clean child rows first. If your database already has ON DELETE CASCADE, these are harmless.
-    await supabase.from("reactions").delete().eq("message_id", message.id);
-    await supabase.from("message_reads").delete().eq("message_id", message.id);
+    const conversationId = activeConversation.id;
 
-    const { error } = await supabase
+    // messages has ON DELETE CASCADE for reactions and message_reads, so deleting
+    // the message is enough. .select() returns the deleted rows, which lets us
+    // tell a real deletion from an RLS no-op (0 rows, no error).
+    const { data: deletedRows, error } = await supabase
       .from("messages")
       .delete()
       .eq("id", message.id)
-      .eq("sender_id", session.user.id);
+      .eq("sender_id", session.user.id)
+      .select();
 
     if (error) {
       console.error(error);
@@ -7488,15 +7548,29 @@ export default function App() {
       return;
     }
 
+    if (!deletedRows || deletedRows.length === 0) {
+      setMessageActionStatus("This message could not be deleted.");
+      window.setTimeout(() => setMessageActionStatus(""), 2600);
+      return;
+    }
+
     if (editingMessage?.id === message.id) {
       clearEditor();
     }
 
+    // Remove it from our own view now (a plain refetch would merge it back from
+    // the cache), and tell everyone else over the channel so their copy goes too.
+    purgeMessageLocally(conversationId, String(message.id));
+    directChannelRef.current?.send({
+      type: "broadcast",
+      event: "message-deleted",
+      payload: { id: String(message.id) },
+    });
+
     setMessageActionStatus("");
-    await fetchMessages(activeConversation.id);
     await fetchConversations();
     await fetchReactions();
-    await fetchSeenSummaries(activeConversation.id);
+    await fetchSeenSummaries(conversationId);
   };
 
   const toggleFavoriteSticker = (stickerId: string) => {
