@@ -1157,7 +1157,9 @@ function canEditSentMessage(message: MessageRow, currentUserId: string): boolean
 }
 
 function canDeleteSentMessage(message: MessageRow, currentUserId: string): boolean {
-  return Boolean(message.sender_id === currentUserId && getMessageAgeMs(message) <= DELETE_MESSAGE_WINDOW_MS);
+  // You can delete your own messages at any time (there used to be a 60-minute
+  // window, which made older messages undeletable).
+  return message.sender_id === currentUserId;
 }
 
 function formatWindowMinutes(ms: number): string {
@@ -1439,6 +1441,90 @@ function SplashScreen() {
 
 // Where the "remember me" credentials live, on this device only. Cleared on an
 // explicit sign-out (see clearRememberedLogin). Also see [[elelany-project]].
+// Makes a popover draggable by its header and remembers where the user left it
+// (per storageKey, in localStorage). Until first dragged it renders wherever its
+// classes place it (anchored to the composer); after a drag it floats at the
+// saved screen position and reopens there next time.
+function useDraggablePopover(storageKey: string) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed.x === "number" && typeof parsed.y === "number" ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // If the window shrinks, pull a floating popover back on-screen.
+  useEffect(() => {
+    if (!pos) return;
+    const onResize = () => {
+      const el = ref.current;
+      if (!el) return;
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      setPos((p) => {
+        if (!p) return p;
+        const nx = Math.min(Math.max(8, p.x), Math.max(8, window.innerWidth - w - 8));
+        const ny = Math.min(Math.max(8, p.y), Math.max(8, window.innerHeight - h - 8));
+        return nx === p.x && ny === p.y ? p : { x: nx, y: ny };
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [pos]);
+
+  const onPointerDown = (event: React.PointerEvent) => {
+    if (event.button !== 0) return;
+    // Don't start a drag from a control inside the header.
+    if ((event.target as HTMLElement).closest("button, input, textarea, a, [data-no-drag]")) return;
+    const el = ref.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    const width = rect.width;
+    const height = rect.height;
+    setPos({ x: rect.left, y: rect.top });
+
+    const onMove = (e: PointerEvent) => {
+      const nx = Math.min(Math.max(8, e.clientX - offsetX), Math.max(8, window.innerWidth - width - 8));
+      const ny = Math.min(Math.max(8, e.clientY - offsetY), Math.max(8, window.innerHeight - height - 8));
+      setPos({ x: nx, y: ny });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setPos((p) => {
+        if (p) {
+          try {
+            window.localStorage.setItem(storageKey, JSON.stringify(p));
+          } catch {
+            /* ignore */
+          }
+        }
+        return p;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    event.preventDefault();
+  };
+
+  const floatingStyle: React.CSSProperties | undefined = pos
+    ? { position: "fixed", left: pos.x, top: pos.y, right: "auto", bottom: "auto", margin: 0, zIndex: 60 }
+    : undefined;
+
+  return {
+    ref,
+    floatingStyle,
+    dragHandleProps: { onPointerDown, style: { cursor: "move" as const, touchAction: "none" as const } },
+  };
+}
+
 const REMEMBER_LOGIN_KEY = "elelany_remember_login_v1";
 
 function loadRememberedLogin(): { email: string; password: string } | null {
@@ -1695,13 +1781,17 @@ function MessageBubble({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [reactionCustomizeOpen, setReactionCustomizeOpen] = useState(false);
   const messageRootRef = useRef<HTMLDivElement | null>(null);
+  const actionBarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!pickerOpen && !actionsOpen) return;
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null;
-      if (target && messageRootRef.current?.contains(target)) return;
+      // Close on a click anywhere outside the reaction/actions bar itself —
+      // including elsewhere on this same message — but not on its own triggers
+      // or popups, so the toggle buttons keep working.
+      if (target && actionBarRef.current?.contains(target)) return;
 
       setPickerOpen(false);
       setActionsOpen(false);
@@ -1889,7 +1979,7 @@ function MessageBubble({
           )}
 
           {!localPending ? (
-            <div className={`relative ml-1 inline-flex items-center gap-1 rounded-full border border-slate-100 bg-white/95 px-1.5 py-1 text-slate-500 shadow-md transition ${actionsOpen || pickerOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+            <div ref={actionBarRef} className={`relative ml-1 inline-flex items-center gap-1 rounded-full border border-slate-100 bg-white/95 px-1.5 py-1 text-slate-500 shadow-md transition ${actionsOpen || pickerOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
               <button
                 type="button"
                 onClick={() => {
@@ -1995,7 +2085,7 @@ function MessageBubble({
                   }}
                   className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-full text-[14px] text-rose-300 transition hover:bg-rose-50 hover:text-rose-500"
                   aria-label="Delete message"
-                  title={`Delete within ${formatWindowMinutes(DELETE_MESSAGE_WINDOW_MS)}`}
+                  title="Delete message"
                 >
                   <MessageTrashMiniIcon />
                 </button>
@@ -2168,6 +2258,11 @@ export default function App() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [showAnimatedEmojiPicker, setShowAnimatedEmojiPicker] = useState(false);
+
+  // Draggable composer pickers, each remembering its last position.
+  const emojiPopover = useDraggablePopover("elelany_pos_emoji_v1");
+  const stickerPopover = useDraggablePopover("elelany_pos_sticker_v1");
+  const animatedEmojiPopover = useDraggablePopover("elelany_pos_animated_v1");
   const [richTextPicker, setRichTextPicker] = useState<RichTextPicker | null>(null);
   const [animatedEmojiItems, setAnimatedEmojiItems] = useState<AnimatedEmojiItem[]>([]);
   const [animatedEmojiLoading, setAnimatedEmojiLoading] = useState(false);
@@ -9110,8 +9205,9 @@ export default function App() {
         }
 
         .elelany-lato:not(.accent-effect-plain) .composer-toolbar {
-          background: color-mix(in srgb, var(--app-gradient-a) 36%, white) !important;
-          border-color: color-mix(in srgb, var(--app-gradient-b) 28%, white) !important;
+          /* The icons row stays white whatever theme colour is selected. */
+          background: transparent !important;
+          border-color: transparent !important;
         }
 
         .elelany-lato:not(.accent-effect-plain) .composer-toolbar button:hover,
@@ -9188,7 +9284,13 @@ export default function App() {
         }
 
         .elelany-lato .active-chat-row {
-          background-color: color-mix(in srgb, var(--accent-200) 60%, white) !important;
+          /* Same colour as the Send button (accent-400). */
+          background-color: var(--accent-400) !important;
+        }
+        /* Text on the accent-coloured active row is white for contrast. */
+        .elelany-lato .active-chat-row .active-chat-title,
+        .elelany-lato .active-chat-row .active-chat-preview {
+          color: #ffffff !important;
         }
 
         .elelany-lato .hover\:border-emerald-100:hover {
@@ -9784,14 +9886,14 @@ export default function App() {
                             <AvatarCircle imageUrl={item.avatarUrl} label={item.displayName} online={item.isGroup ? undefined : isUserOnline(item.otherUser?.id)} showPresence={!item.isGroup} />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
-                                <div className={`truncate text-[15px] ${active ? "font-bold text-slate-900" : unread ? "font-bold text-slate-950" : "font-medium text-slate-800"}`}>
+                                <div className={`active-chat-title truncate text-[15px] ${active ? "font-bold text-slate-900" : unread ? "font-bold text-slate-950" : "font-medium text-slate-800"}`}>
                                   {favoriteConversationIds.includes(item.conversation.id) ? "★ " : ""}{item.displayName}
                                 </div>
                                 {unread ? (
-                                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] font-bold text-white ${mutedConversationIds.includes(item.conversation.id) ? "bg-slate-300" : "bg-emerald-400"}`}>{unreadCount}</span>
+                                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] font-bold text-white ${mutedConversationIds.includes(item.conversation.id) ? "bg-slate-300" : "bg-slate-800"}`}>{unreadCount}</span>
                                 ) : null}
                               </div>
-                              <div className={`truncate text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}>
+                              <div className={`active-chat-preview truncate text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}>
                                 {lastAnimatedEmojiPreview ? (
                                     <span className="inline-flex items-center gap-2">
                                       {muted ? <span>Muted •</span> : null}
@@ -10613,7 +10715,7 @@ export default function App() {
           </div>
 
           <div
-            className={`composer-shell relative flex shrink-0 flex-col bg-white/80 px-4 py-4 transition sm:px-6 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
+            className={`composer-shell relative flex shrink-0 flex-col border-t border-slate-100 bg-white/80 px-4 pt-4 pb-4 transition sm:px-6 sm:pb-12 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
             onDragEnter={handleAttachmentDragEnter}
             onDragOver={handleAttachmentDragOver}
             onDragLeave={handleAttachmentDragLeave}
@@ -10671,7 +10773,7 @@ export default function App() {
               {/* Wraps to a second row on a phone rather than overflowing.
                   Wrapping (not overflow-x) keeps overflow-visible intact, which
                   the emoji, colour and sticker popups need to escape the bar. */}
-              <div ref={pickerToolbarRef} className={`composer-toolbar ${toolbarIconSizeClass} relative min-w-0 flex flex-1 max-md:flex-wrap flex-nowrap items-center gap-1.5 overflow-visible bg-transparent px-0 py-1`}>
+              <div ref={pickerToolbarRef} className={`composer-toolbar ${toolbarIconSizeClass} relative min-w-0 flex flex-1 flex-wrap items-center gap-1.5 overflow-visible bg-transparent px-0 py-1`}>
                 {showRichTextTools ? (
                   <>
                     <button type="button" className={`rich-editor-tool inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/80 hover:text-slate-950 hover:shadow-sm ${richEditorActiveClass(editorActiveFormats.bold)}`} onMouseDown={(event) => event.preventDefault()} onClick={() => runEditorCommand("bold")} aria-label="Bold">
@@ -10992,13 +11094,15 @@ export default function App() {
                 ) : null}
 
                 <div
+                  ref={animatedEmojiPopover.ref}
+                  style={animatedEmojiPopover.floatingStyle}
                   className={`absolute bottom-full left-0 z-30 mb-2 w-[520px] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl transition duration-150 ${showAnimatedEmojiPicker ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
                   aria-hidden={!showAnimatedEmojiPicker}
                 >
-                    <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="mb-3 flex items-center justify-between gap-3" {...animatedEmojiPopover.dragHandleProps}>
                       <div>
                         <div className="text-[15px] font-semibold text-slate-700">Animated emojis</div>
-                        <div className="text-[12px] text-slate-500">Built in for all users</div>
+                        <div className="text-[12px] text-slate-500">Drag to move · built in for all users</div>
                       </div>
                       <button
                         type="button"
@@ -11125,11 +11229,15 @@ export default function App() {
                   </div>
 
                 {showStickerPicker ? (
-                  <div className="absolute bottom-full left-0 z-30 mb-2 w-[min(460px,calc(100vw-2rem))] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl">
-                    <div className="mb-3 flex items-center justify-between gap-3">
+                  <div
+                    ref={stickerPopover.ref}
+                    style={stickerPopover.floatingStyle}
+                    className="absolute bottom-full left-0 z-30 mb-2 w-[min(460px,calc(100vw-2rem))] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-3" {...stickerPopover.dragHandleProps}>
                       <div>
                         <div className="text-[15px] font-semibold text-slate-700">Sticker picker</div>
-                        <div className="text-[12px] text-slate-500">Built-in, custom packs, favorites and recent stickers</div>
+                        <div className="text-[12px] text-slate-500">Drag to move · built-in, custom, favorites, recent</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -11279,8 +11387,12 @@ export default function App() {
                 ) : null}
 
                 {showEmojiPicker ? (
-                  <div className="absolute bottom-full left-0 z-30 mb-2 w-[360px] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl">
-                    <div className="mb-2 flex items-center justify-between">
+                  <div
+                    ref={emojiPopover.ref}
+                    style={emojiPopover.floatingStyle}
+                    className="absolute bottom-full left-0 z-30 mb-2 w-[360px] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl"
+                  >
+                    <div className="mb-2 flex items-center justify-between" {...emojiPopover.dragHandleProps}>
                       <div className="text-[15px] font-semibold text-slate-700">Emoji picker</div>
                       <button type="button" className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-emerald-50" onClick={() => setShowEmojiPicker(false)}>✕</button>
                     </div>
@@ -11385,8 +11497,8 @@ export default function App() {
                         sendMessage();
                       }
                     }}
-                    data-placeholder={editingMessage ? "Edit your message" : activeConversation ? "Type a private message" : "Select a chat first"}
-                    className="composer-copy h-full w-full overflow-y-auto px-4 py-3 text-[18px] leading-[30px] text-slate-700 outline-none empty:before:pointer-events-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)] [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                    data-placeholder={editingMessage ? "Edit your message" : activeConversation ? "Type a message" : "Select a chat first"}
+                    className="composer-copy h-full w-full overflow-y-auto px-4 py-3 text-[18px] leading-[30px] text-slate-700 outline-none empty:before:pointer-events-none empty:before:text-slate-300 empty:before:content-[attr(data-placeholder)] [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
                   />
                 </div>
               </div>

@@ -72,9 +72,6 @@ function createMainWindow() {
         border: 0 !important;
         box-shadow: none !important;
       }
-      /* Desktop-only: lift the composer off the window's bottom edge so the
-         input line isn't flush against the frame. Web/mobile are unaffected. */
-      .composer-shell { padding-bottom: 22px !important; }
     `);
 
     // macOS only: reserve a slim strip at the top for the floating traffic
