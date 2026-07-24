@@ -46,6 +46,11 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Keep the renderer running at full speed while the window is hidden or
+      // minimized, so incoming realtime messages are processed and the unread
+      // badge updates in the background (Chromium freezes background pages by
+      // default, which is why the dock/taskbar count never appeared).
+      backgroundThrottling: false,
     },
   });
 
@@ -74,12 +79,14 @@ function createMainWindow() {
       }
     `);
 
-    // macOS only: reserve a slim strip at the top for the floating traffic
-    // lights, and make that strip drag the window (there is no title bar).
+    // macOS only: make room for the floating traffic lights INSIDE the app's
+    // own surface (the white card fills the window and the clearance is its own
+    // top area) rather than as a separate gradient band above it, so the window
+    // reads as one compact piece. A draggable strip over that area moves the
+    // window since there is no title bar.
     if (process.platform === "darwin") {
       mainWindow.webContents.insertCSS(`
-        .app-bg { padding-top: 30px !important; }
-        .app-bg > div { height: calc(100vh - 30px) !important; }
+        .app-bg > div { height: 100vh !important; padding-top: 30px !important; }
       `);
 
       mainWindow.webContents
