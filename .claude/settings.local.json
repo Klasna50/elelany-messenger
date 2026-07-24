@@ -98,7 +98,8 @@
       "Bash(sips -z 32 32 build/icon.png --out public/favicon-32.png)",
       "Bash(node -e \"console.log\\('vite-plugin-pwa', require\\('./node_modules/vite-plugin-pwa/package.json'\\).version\\)\")",
       "Bash(lsof -ti:4173)",
-      "Bash(xargs kill)"
+      "Bash(xargs kill)",
+      "Bash(awk -F: '$1 > 10650 && $1 < 11000')"
     ]
   }
 }

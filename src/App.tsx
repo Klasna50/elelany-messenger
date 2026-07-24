@@ -9087,13 +9087,8 @@ export default function App() {
         }
 
         .elelany-lato:not(.accent-effect-plain) .composer-surface {
-          background:
-            linear-gradient(135deg,
-              rgba(255,255,255,0.98),
-              color-mix(in srgb, var(--app-gradient-a) 38%, white),
-              color-mix(in srgb, var(--app-gradient-c) 26%, white)
-            ) !important;
-          border-color: color-mix(in srgb, var(--app-gradient-b) 32%, white) !important;
+          background: #ffffff !important;
+          border-color: #e5e7eb !important;
         }
 
         .elelany-lato:not(.accent-effect-plain) .composer-toolbar {
@@ -9175,7 +9170,7 @@ export default function App() {
         }
 
         .elelany-lato .active-chat-row {
-          background-color: color-mix(in srgb, var(--accent-100) 72%, white) !important;
+          background-color: color-mix(in srgb, var(--accent-200) 60%, white) !important;
         }
 
         .elelany-lato .hover\:border-emerald-100:hover {
@@ -9206,8 +9201,10 @@ export default function App() {
         }
 
         .elelany-lato .composer-surface {
-          background-color: color-mix(in srgb, var(--accent-50) 55%, white) !important;
-          border: 1px solid color-mix(in srgb, var(--accent-100) 35%, transparent) !important;
+          background-color: #ffffff !important;
+          /* Very thin, very light gray frame with little rounded corners. */
+          border: 1px solid #e5e7eb !important;
+          border-radius: 12px !important;
         }
 
         .elelany-lato [aria-label="Resize composer"],
@@ -9453,7 +9450,7 @@ export default function App() {
               />
                             <button
               type="button"
-              className="mt-4 w-full rounded-2xl bg-emerald-400 px-4 py-2.5 text-[15px] font-semibold text-white transition hover:bg-emerald-500"
+              className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
               onClick={() => {
                 setGroupComposerOpen((value) => !value);
                 setGroupStatus("");
@@ -10598,7 +10595,7 @@ export default function App() {
           </div>
 
           <div
-            className={`composer-shell relative shrink-0 border-t border-slate-200 bg-white/80 px-4 py-4 transition sm:px-6 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
+            className={`composer-shell relative flex shrink-0 flex-col border-t border-slate-200 bg-white/80 px-4 py-4 transition sm:px-6 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
             onDragEnter={handleAttachmentDragEnter}
             onDragOver={handleAttachmentDragOver}
             onDragLeave={handleAttachmentDragLeave}
@@ -10650,7 +10647,9 @@ export default function App() {
               </div>
             ) : null}
 
-            <div className="mb-3 flex items-center gap-2 sm:gap-3">
+            {/* Toolbar sits BELOW the editor (order-2), on the same line as the
+                Send button but outside the white composer box. */}
+            <div className="order-2 mt-2 flex items-center gap-2 sm:gap-3">
               {/* Wraps to a second row on a phone rather than overflowing.
                   Wrapping (not overflow-x) keeps overflow-visible intact, which
                   the emoji, colour and sticker popups need to escape the bar. */}
@@ -11310,12 +11309,12 @@ export default function App() {
                 ) : null}
               </div>
 
-              <div className="hidden shrink-0 rounded-2xl px-4 py-3 sm:block" aria-hidden="true">
-                <span className="invisible flex items-center gap-2"><span>➤</span><span>Send</span></span>
-              </div>
+              <button disabled={!activeConversation} onClick={sendMessage} className="shrink-0 rounded-2xl bg-emerald-400 px-4 py-3 text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300" type="button">
+                <span className="flex items-center gap-2"><span>{editingMessage ? "✓" : "➤"}</span><span className="hidden sm:inline">{editingMessage ? "Save" : "Send"}</span></span>
+              </button>
             </div>
 
-            <div className="flex items-end gap-2 sm:gap-3">
+            <div className="order-1 flex items-end gap-2 sm:gap-3">
               <div className="min-w-0 flex-1">
                 {composerContext ? (
                   <div className="composer-action-banner mb-2 flex items-start justify-between gap-3 rounded-2xl border px-3 py-2">
@@ -11347,7 +11346,7 @@ export default function App() {
                 ) : null}
 
                 <div
-                  className={`composer-surface relative overflow-hidden bg-emerald-50/35 ${isAttachmentDragOver ? "ring-2 ring-emerald-200/70" : ""}`}
+                  className={`composer-surface relative overflow-hidden rounded-xl border border-slate-200 bg-white ${isAttachmentDragOver ? "ring-2 ring-emerald-200/70" : ""}`}
                   style={{ height: `${composerHeight}px` }}
                 >
                   <div
@@ -11373,10 +11372,6 @@ export default function App() {
                   />
                 </div>
               </div>
-
-              <button disabled={!activeConversation} onClick={sendMessage} className="shrink-0 rounded-2xl bg-emerald-400 px-4 py-3 text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300" type="button">
-                <span className="flex items-center gap-2"><span>{editingMessage ? "✓" : "➤"}</span><span className="hidden sm:inline">{editingMessage ? "Save" : "Send"}</span></span>
-              </button>
             </div>
           </div>
         </main>
