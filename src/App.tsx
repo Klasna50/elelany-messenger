@@ -9605,30 +9605,19 @@ export default function App() {
                     </div>
                   ) : null}
 
-                  <p className="truncate text-[15px] text-slate-500">
-                    {profileNameSaving
-                      ? "Saving name..."
-                      : avatarUploading
-                        ? "Uploading avatar..."
-                        : profileNameStatus || avatarStatus || "Private and group chats"}
-                  </p>
+                  {profileNameSaving || avatarUploading || profileNameStatus || avatarStatus ? (
+                    <p className="truncate text-[15px] text-slate-500">
+                      {profileNameSaving
+                        ? "Saving name..."
+                        : avatarUploading
+                          ? "Uploading avatar..."
+                          : profileNameStatus || avatarStatus}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[15px] font-semibold text-slate-600 transition hover:bg-slate-50"
-                  onClick={() => {
-                    setNewChatOpen((value) => !value);
-                    setInviteStatus("");
-                    setGroupComposerOpen(false);
-                    setGroupStatus("");
-                  }}
-                  title="New message"
-                >
-                  +
-                </button>
                 <button className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[15px]" onClick={() => { clearRememberedLogin(); supabase.auth.signOut(); }}>
                   Sign out
                 </button>
@@ -9636,15 +9625,37 @@ export default function App() {
             </div>
 
             <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.2-3.2" />
+                </svg>
+              </span>
               <input
-                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-orange-200"
-                placeholder="Search chats"
+                className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3 py-2 outline-none focus:border-orange-200"
+                placeholder=""
+                aria-label="Search chats"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-                            <button
+            </div>
+
+            <button
               type="button"
               className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
+              onClick={() => {
+                setNewChatOpen((value) => !value);
+                setInviteStatus("");
+                setGroupComposerOpen(false);
+                setGroupStatus("");
+              }}
+            >
+              {newChatOpen ? "Close" : "+ Add contact"}
+            </button>
+
+            <button
+              type="button"
+              className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
               onClick={() => {
                 setGroupComposerOpen((value) => !value);
                 setGroupStatus("");
@@ -9695,7 +9706,6 @@ export default function App() {
                 </button>
               </div>
             ) : null}
-          </div>
           </div>
 
           {newChatOpen ? (
@@ -10504,7 +10514,7 @@ export default function App() {
                   {chatSearchLoading
                     ? "Searching…"
                     : chatSearchQuery.trim().length < 2
-                      ? "Type at least 2 characters."
+                      ? "Type at least 2 characters"
                       : chatSearchResults.length
                         ? `${chatSearchResults.length} result${chatSearchResults.length === 1 ? "" : "s"} — click to jump`
                         : "No messages found."}
@@ -10789,7 +10799,7 @@ export default function App() {
           </div>
 
           <div
-            className={`composer-shell relative flex shrink-0 flex-col border-t border-slate-100 bg-white/80 px-4 pt-4 pb-4 transition sm:px-6 sm:pb-12 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
+            className={`composer-shell relative flex shrink-0 flex-col border-t border-slate-100 bg-white/80 px-4 pt-4 pb-5 transition sm:px-6 sm:pb-20 ${isAttachmentDragOver ? "bg-emerald-50/40" : ""}`}
             onDragEnter={handleAttachmentDragEnter}
             onDragOver={handleAttachmentDragOver}
             onDragLeave={handleAttachmentDragLeave}

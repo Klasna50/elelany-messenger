@@ -104,7 +104,9 @@
       "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);print\\(len\\(d\\)\\)\")",
       "Bash(echo \"count: $\\(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);print\\(len\\(d\\)\\)\"\\)\")",
       "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);[print\\(json.dumps\\(x\\)\\) for x in d[:3]]\")",
-      "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);ks=set\\(\\);[ks.update\\(x.keys\\(\\)\\) for x in d];print\\(sorted\\(ks\\)\\)\")"
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);ks=set\\(\\);[ks.update\\(x.keys\\(\\)\\) for x in d];print\\(sorted\\(ks\\)\\)\")",
+      "WebSearch",
+      "Bash(mkdir -p \"/Users/v/Downloads/FolderGuard\")"
     ]
   }
 }
