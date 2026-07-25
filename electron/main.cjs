@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("fs");
 const {
   app,
   BrowserWindow,
@@ -21,15 +22,92 @@ let pendingSnipImage = null;
 app.isQuitting = false;
 
 // ---------------------------------------------------------------------
+// Remember the window size/position across launches (and app updates).
+// The state file lives in userData, which survives an update, so the app
+// reopens at the size the user last set instead of the default.
+// ---------------------------------------------------------------------
+
+const DEFAULT_WINDOW = { width: 1440, height: 920 };
+const MIN_WINDOW = { width: 940, height: 620 };
+let lastNormalBounds = null;
+let saveWindowTimer = null;
+
+function windowStateFile() {
+  return path.join(app.getPath("userData"), "window-state.json");
+}
+
+// True if enough of the window would land on a connected display to be usable
+// (guards against a saved position on a monitor that's no longer attached).
+function boundsOnScreen(bounds) {
+  if (!bounds || typeof bounds.x !== "number" || typeof bounds.y !== "number") return false;
+  return screen.getAllDisplays().some((display) => {
+    const a = display.workArea;
+    return (
+      bounds.x < a.x + a.width - 40 &&
+      bounds.x + bounds.width > a.x + 40 &&
+      bounds.y < a.y + a.height - 40 &&
+      bounds.y + bounds.height > a.y + 20
+    );
+  });
+}
+
+function loadWindowState() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(windowStateFile(), "utf8"));
+    const width = Math.max(MIN_WINDOW.width, Math.round(Number(saved.width) || DEFAULT_WINDOW.width));
+    const height = Math.max(MIN_WINDOW.height, Math.round(Number(saved.height) || DEFAULT_WINDOW.height));
+    const state = { width, height, isMaximized: Boolean(saved.isMaximized) };
+    if (boundsOnScreen({ x: saved.x, y: saved.y, width, height })) {
+      state.x = Math.round(saved.x);
+      state.y = Math.round(saved.y);
+    }
+    return state;
+  } catch {
+    return { ...DEFAULT_WINDOW, isMaximized: false };
+  }
+}
+
+function saveWindowState(win) {
+  if (!win || win.isDestroyed()) return;
+  // Only capture the "restored" bounds while the window is in its normal state,
+  // so maximizing doesn't overwrite the size to restore to.
+  if (!win.isMaximized() && !win.isMinimized() && !win.isFullScreen()) {
+    lastNormalBounds = win.getBounds();
+  }
+  const base = lastNormalBounds || DEFAULT_WINDOW;
+  const state = {
+    x: base.x,
+    y: base.y,
+    width: base.width,
+    height: base.height,
+    isMaximized: win.isMaximized(),
+  };
+  try {
+    fs.writeFileSync(windowStateFile(), JSON.stringify(state));
+  } catch {
+    // Best effort — a missing size memory is not worth crashing over.
+  }
+}
+
+function scheduleWindowStateSave() {
+  if (saveWindowTimer) clearTimeout(saveWindowTimer);
+  saveWindowTimer = setTimeout(() => saveWindowState(mainWindow), 400);
+}
+
+// ---------------------------------------------------------------------
 // Main window
 // ---------------------------------------------------------------------
 
 function createMainWindow() {
+  const winState = loadWindowState();
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 920,
-    minWidth: 940,
-    minHeight: 620,
+    width: winState.width,
+    height: winState.height,
+    ...(typeof winState.x === "number" && typeof winState.y === "number"
+      ? { x: winState.x, y: winState.y }
+      : {}),
+    minWidth: MIN_WINDOW.width,
+    minHeight: MIN_WINDOW.height,
     show: false,
     backgroundColor: "#ffffff",
     // macOS: hide the OS title bar entirely and float the traffic lights in the
@@ -53,6 +131,23 @@ function createMainWindow() {
       backgroundThrottling: false,
     },
   });
+
+  // Restore the maximized state and seed the "restore" bounds from the saved
+  // size (getBounds() would report the maximized size once maximized).
+  lastNormalBounds = {
+    x: winState.x,
+    y: winState.y,
+    width: winState.width,
+    height: winState.height,
+  };
+  if (winState.isMaximized) mainWindow.maximize();
+
+  // Persist size/position whenever it changes, so the last layout is always on
+  // disk (userData) and survives quitting and app updates.
+  mainWindow.on("resize", scheduleWindowStateSave);
+  mainWindow.on("move", scheduleWindowStateSave);
+  mainWindow.on("maximize", () => saveWindowState(mainWindow));
+  mainWindow.on("unmaximize", () => saveWindowState(mainWindow));
 
   if (isDev && process.env.ELECTRON_START_URL) {
     mainWindow.loadURL(process.env.ELECTRON_START_URL);
@@ -145,6 +240,7 @@ function createMainWindow() {
   // signed in. The app only truly closes when the user explicitly quits
   // (Cmd/Ctrl+Q, the app menu, or the tray "Quit" item).
   mainWindow.on("close", (event) => {
+    saveWindowState(mainWindow);
     if (!app.isQuitting) {
       event.preventDefault();
       mainWindow.hide();
@@ -528,6 +624,7 @@ if (!app.requestSingleInstanceLock()) {
   // Real quit (Cmd/Ctrl+Q, menu, tray) — allow the window's close to proceed.
   app.on("before-quit", () => {
     app.isQuitting = true;
+    saveWindowState(mainWindow);
   });
 
   // Do NOT quit when the window is hidden. Closing the window backgrounds the
