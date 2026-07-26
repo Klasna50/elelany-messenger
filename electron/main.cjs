@@ -129,8 +129,21 @@ function createMainWindow() {
       // badge updates in the background (Chromium freezes background pages by
       // default, which is why the dock/taskbar count never appeared).
       backgroundThrottling: false,
+      // Spell-check the composer; suggestions appear in the right-click menu.
+      spellcheck: true,
     },
   });
+
+  // macOS uses the native spell-checker (its own languages); on Windows/Linux
+  // Electron's Hunspell needs a language set, so seed it from the app locale.
+  if (process.platform !== "darwin") {
+    try {
+      const locale = app.getLocale() || "en-US";
+      mainWindow.webContents.session.setSpellCheckerLanguages([locale.startsWith("en") ? "en-US" : locale]);
+    } catch {
+      // A missing dictionary just means no squiggles; not fatal.
+    }
+  }
 
   // Restore the maximized state and seed the "restore" bounds from the saved
   // size (getBounds() would report the maximized size once maximized).
@@ -211,26 +224,52 @@ function createMainWindow() {
   });
 
   // Electron shows no context menu by default, so right-clicking the composer
-  // did nothing. Build the usual Cut/Copy/Paste menu for editable fields, and
-  // Copy for any selected text (e.g. a message you've highlighted).
+  // did nothing. Build the usual Cut/Copy/Paste menu for editable fields, Copy
+  // for any selected text, and — when right-clicking a misspelled word —
+  // spelling corrections at the top.
   mainWindow.webContents.on("context-menu", (_event, params) => {
-    const { editFlags, isEditable, selectionText } = params;
+    const { editFlags, isEditable, selectionText, misspelledWord, dictionarySuggestions } = params;
     const hasSelection = Boolean(selectionText && selectionText.trim());
+    const hasMisspelling = Boolean(misspelledWord);
     if (!isEditable && !hasSelection) return;
 
-    const template = isEditable
-      ? [
-          { label: "Cut", role: "cut", enabled: editFlags.canCut },
-          { label: "Copy", role: "copy", enabled: editFlags.canCopy },
-          { label: "Paste", role: "paste", enabled: editFlags.canPaste },
-          { type: "separator" },
-          { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll },
-        ]
-      : [
-          { label: "Copy", role: "copy", enabled: editFlags.canCopy },
-          { type: "separator" },
-          { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll },
-        ];
+    const template = [];
+
+    // Spelling suggestions for a misspelled word, then "Add to dictionary".
+    if (hasMisspelling) {
+      if (dictionarySuggestions && dictionarySuggestions.length) {
+        for (const suggestion of dictionarySuggestions) {
+          template.push({
+            label: suggestion,
+            click: () => mainWindow.webContents.replaceMisspelling(suggestion),
+          });
+        }
+      } else {
+        template.push({ label: "No suggestions", enabled: false });
+      }
+      template.push({ type: "separator" });
+      template.push({
+        label: "Add to dictionary",
+        click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(misspelledWord),
+      });
+      template.push({ type: "separator" });
+    }
+
+    if (isEditable) {
+      template.push(
+        { label: "Cut", role: "cut", enabled: editFlags.canCut },
+        { label: "Copy", role: "copy", enabled: editFlags.canCopy },
+        { label: "Paste", role: "paste", enabled: editFlags.canPaste },
+        { type: "separator" },
+        { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll }
+      );
+    } else {
+      template.push(
+        { label: "Copy", role: "copy", enabled: editFlags.canCopy },
+        { type: "separator" },
+        { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll }
+      );
+    }
 
     Menu.buildFromTemplate(template).popup({ window: mainWindow });
   });

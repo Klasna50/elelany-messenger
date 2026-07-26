@@ -22,6 +22,14 @@ type ChatListItem = {
 
 type ChatSortOption = "recent" | "unread" | "az" | "groups" | "private";
 
+const CHAT_SORT_OPTIONS: Array<{ value: ChatSortOption; short: string; label: string }> = [
+  { value: "recent", short: "Recent", label: "Recent" },
+  { value: "unread", short: "Unread", label: "Unread first" },
+  { value: "az", short: "A–Z", label: "A–Z" },
+  { value: "groups", short: "Groups", label: "Groups first" },
+  { value: "private", short: "Private", label: "Private first" },
+];
+
 type LocalPendingMessage = MessageRow & {
   is_local_pending?: boolean;
   local_status?: "sending" | "failed";
@@ -2226,6 +2234,13 @@ export default function App() {
   const [seenSummariesCache, setSeenSummariesCache] = useState<Record<string, Record<string, SeenSummary>>>({});
   const [query, setQuery] = useState("");
   const [chatSortOption, setChatSortOption] = useState<ChatSortOption>("recent");
+  const [chatSortMenuOpen, setChatSortMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!chatSortMenuOpen) return;
+    const close = () => setChatSortMenuOpen(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [chatSortMenuOpen]);
   const [manualUnreadConversationIds, setManualUnreadConversationIds] = useState<string[]>([]);
   const [favoriteConversationIds, setFavoriteConversationIds] = useState<string[]>([]);
   const [mutedConversationIds, setMutedConversationIds] = useState<string[]>([]);
@@ -9625,14 +9640,14 @@ export default function App() {
             </div>
 
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="7" />
                   <path d="m20 20-3.2-3.2" />
                 </svg>
               </span>
               <input
-                className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-3 py-2 outline-none focus:border-orange-200"
+                className="w-full rounded-2xl border border-slate-200 bg-white pl-3 pr-10 py-2 outline-none focus:border-orange-200"
                 placeholder=""
                 aria-label="Search chats"
                 value={query}
@@ -9642,7 +9657,7 @@ export default function App() {
 
             <button
               type="button"
-              className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
+              className="mt-2 flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
               onClick={() => {
                 setNewChatOpen((value) => !value);
                 setInviteStatus("");
@@ -9650,18 +9665,20 @@ export default function App() {
                 setGroupStatus("");
               }}
             >
-              {newChatOpen ? "Close" : "+ Add contact"}
+              <span>{newChatOpen ? "Close" : "Add contact"}</span>
+              <span className="text-[18px] leading-none">{newChatOpen ? "✕" : "+"}</span>
             </button>
 
             <button
               type="button"
-              className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
+              className="mt-2 flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
               onClick={() => {
                 setGroupComposerOpen((value) => !value);
                 setGroupStatus("");
               }}
             >
-              {groupComposerOpen ? "Close group creator" : "+ Create group"}
+              <span>{groupComposerOpen ? "Close group creator" : "Create group"}</span>
+              <span className="text-[18px] leading-none">{groupComposerOpen ? "✕" : "+"}</span>
             </button>
 
             {groupComposerOpen ? (
@@ -9855,7 +9872,7 @@ export default function App() {
           ) : null}
 
           <div className="flex min-h-0 flex-1 flex-col p-4">
-            <div className="z-30 mb-3 grid shrink-0 grid-cols-2 gap-2 rounded-2xl bg-slate-50/95 px-1 py-1 backdrop-blur">
+            <div className="z-30 mb-3 grid shrink-0 grid-cols-3 gap-2 rounded-2xl bg-slate-50/95 px-1 py-1 backdrop-blur">
               <button
                 type="button"
                 onClick={() => {
@@ -9883,6 +9900,40 @@ export default function App() {
                   </span>
                 ) : null}
               </button>
+
+              {/* Third button: the chat-sort selector, opening a small menu. */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={() => setChatSortMenuOpen((open) => !open)}
+                  className={`w-full rounded-2xl px-3 py-2 text-[14px] font-semibold transition ${chatSortMenuOpen ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-white/70"}`}
+                  title="Sort chats"
+                >
+                  {CHAT_SORT_OPTIONS.find((option) => option.value === chatSortOption)?.short || "Recent"}
+                </button>
+                {chatSortMenuOpen ? (
+                  <div
+                    className="absolute right-0 top-full z-40 mt-1 w-[150px] overflow-hidden rounded-2xl border border-slate-100 bg-white p-1 shadow-xl"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    {CHAT_SORT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setChatSortOption(option.value);
+                          setChatSortMenuOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[14px] font-medium transition ${chatSortOption === option.value ? "bg-slate-50 text-slate-900" : "text-slate-600 hover:bg-slate-50"}`}
+                      >
+                        {option.label}
+                        {chatSortOption === option.value ? <span className="text-[13px] text-emerald-500">✓</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -9926,21 +9977,6 @@ export default function App() {
                 aria-hidden={leftPanelMode !== "chats"}
               >
               <>
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="text-[13px] font-semibold uppercase tracking-[0.18em] text-slate-400">Chats</div>
-                  <select
-                    value={chatSortOption}
-                    onChange={(event) => setChatSortOption(event.target.value as ChatSortOption)}
-                    className="rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[13px] font-semibold text-slate-600 outline-none transition hover:border-emerald-100 focus:border-orange-200"
-                    title="Sort chats"
-                  >
-                    <option value="recent">Recent</option>
-                    <option value="unread">Unread first</option>
-                    <option value="az">A-Z</option>
-                    <option value="groups">Groups first</option>
-                    <option value="private">Private first</option>
-                  </select>
-                </div>
                 <div className="space-y-2">
                   {sortedConversations.length ? (
                     sortedConversations.map((item) => {
@@ -11566,6 +11602,7 @@ export default function App() {
                   <div
                     ref={editorRef}
                     contentEditable
+                    spellCheck
                     suppressContentEditableWarning
                     onInput={syncEditorState}
                     onPaste={handleComposerPaste}
