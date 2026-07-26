@@ -981,6 +981,27 @@ function getMessagePreviewText(message: MessageRow): string {
   return "Message";
 }
 
+// Like getMessagePreviewText but KEEPS line breaks, capped to the first two
+// lines, so the chat list can show a two-line message on two lines instead of
+// running them together. (line-clamp can't clamp pre-line text, so we cap the
+// lines here and the container hard-clips the height.)
+function getMessagePreviewMultiline(message: MessageRow): string {
+  const raw = htmlToText(message.body_html || textToHtml(message.body_text)).trim();
+  if (raw) {
+    // Tidy spaces/tabs and blank-line runs, but preserve single line breaks.
+    const cleaned = raw.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{2,}/g, "\n").trim();
+    const lines = cleaned.split("\n");
+    let preview = lines.slice(0, 2).join("\n");
+    if (preview.length > 200) preview = preview.slice(0, 200).trim();
+    if (lines.length > 2 || cleaned.length > preview.length) preview += "…";
+    return preview;
+  }
+  if ((message.body_html || "").includes("data-animated-emoji=")) return "Animated emoji";
+  if ((message.body_html || "").includes("data-sticker")) return "Sticker";
+  if ((message.body_html || "").includes("data-attachment")) return "Attachment";
+  return "Message";
+}
+
 // Pull a picture out of a message (attachment photo, screenshot, sticker or
 // animated emoji) so quotes/answers can show a thumbnail instead of just text.
 function getMessageThumbnailUrl(message: MessageRow): string {
@@ -10077,7 +10098,7 @@ export default function App() {
                                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] font-bold text-white ${mutedConversationIds.includes(item.conversation.id) ? "bg-slate-300" : "bg-slate-800"}`}>{unreadCount}</span>
                                 ) : null}
                               </div>
-                              <div className={`active-chat-preview truncate text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}>
+                              <div className={`active-chat-preview text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}>
                                 {lastAnimatedEmojiPreview ? (
                                     <span className="inline-flex items-center gap-2">
                                       {muted ? <span>Muted •</span> : null}
@@ -10103,7 +10124,12 @@ export default function App() {
                                       )}
                                     </span>
                                   ) : (
-                                    <TwemojiText value={`${muted ? "Muted • " : ""}${item.lastMessage ? getMessagePreviewText(item.lastMessage) : item.displayStatus}`} />
+                                    <span
+                                      className="block overflow-hidden whitespace-pre-line break-words"
+                                      style={{ lineHeight: "1.4em", maxHeight: "2.8em" }}
+                                    >
+                                      <TwemojiText value={`${muted ? "Muted • " : ""}${item.lastMessage ? getMessagePreviewMultiline(item.lastMessage) : item.displayStatus}`} />
+                                    </span>
                                   )}
                               </div>
                             </div>

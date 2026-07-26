@@ -108,7 +108,12 @@
       "WebSearch",
       "Bash(mkdir -p \"/Users/v/Downloads/FolderGuard\")",
       "Bash(grep -n \"function getMessagePreviewText\\\\|function htmlToText\\\\|body_text ||\\\\|item.lastMessage?.body_text\\\\|TwemojiText value={\\\\`\\\\${muted\" src/App.tsx)",
-      "Bash(grep -noiE \"#f\\(b923c|97316|59e0b\\)[^\\)]{0,60}#\\(8b5cf6|a855f7|9333ea|c084fc\\)\" src/App.tsx)"
+      "Bash(grep -noiE \"#f\\(b923c|97316|59e0b\\)[^\\)]{0,60}#\\(8b5cf6|a855f7|9333ea|c084fc\\)\" src/App.tsx)",
+      "Bash(mkdir -p landing/fonts)",
+      "Bash(cp src/fonts/*.woff2 landing/fonts/)",
+      "Bash(cp src/fonts/lato.css landing/fonts/lato.css)",
+      "Bash(cp public/pwa-512.png landing/)",
+      "Bash(echo \"tsc $?\")"
     ]
   }
 }
