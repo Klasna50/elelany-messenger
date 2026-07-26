@@ -106,7 +106,9 @@
       "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);[print\\(json.dumps\\(x\\)\\) for x in d[:3]]\")",
       "Bash(python3 -c \"import json;d=json.load\\(open\\('/tmp/ae-manifest.json'\\)\\);ks=set\\(\\);[ks.update\\(x.keys\\(\\)\\) for x in d];print\\(sorted\\(ks\\)\\)\")",
       "WebSearch",
-      "Bash(mkdir -p \"/Users/v/Downloads/FolderGuard\")"
+      "Bash(mkdir -p \"/Users/v/Downloads/FolderGuard\")",
+      "Bash(grep -n \"function getMessagePreviewText\\\\|function htmlToText\\\\|body_text ||\\\\|item.lastMessage?.body_text\\\\|TwemojiText value={\\\\`\\\\${muted\" src/App.tsx)",
+      "Bash(grep -noiE \"#f\\(b923c|97316|59e0b\\)[^\\)]{0,60}#\\(8b5cf6|a855f7|9333ea|c084fc\\)\" src/App.tsx)"
     ]
   }
 }

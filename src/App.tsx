@@ -89,9 +89,9 @@ type ActivityFeedItem = {
   target_message?: MessageRow | null;
 };
 
-type AccentTheme = "emerald" | "sky" | "violet" | "rose" | "amber" | "slate" | "teal" | "cyan" | "blue" | "indigo" | "purple" | "fuchsia" | "pink" | "red" | "orange" | "lime" | "yellow" | "mint" | "lavender" | "coral" | "peach" | "aqua" | "navy" | "olive" | "stone" | "plum";
+type AccentTheme = "emerald" | "sky" | "violet" | "rose" | "amber" | "slate" | "teal" | "cyan" | "blue" | "indigo" | "purple" | "fuchsia" | "pink" | "red" | "orange" | "lime" | "yellow" | "mint" | "lavender" | "coral" | "peach" | "aqua" | "navy" | "olive" | "stone" | "plum" | "forest" | "crimson" | "grape" | "turquoise" | "burgundy";
 type UiTextSize = "compact" | "normal" | "large";
-type AccentEffect = "plain" | "sunset" | "aurora" | "orchid" | "ocean" | "peach-glow" | "rose-milk" | "lavender-dream" | "mint-cream" | "golden-sand" | "sky-soft" | "coffee-cream" | "night-pearl" | "cherry-soft" | "mediterranean";
+type AccentEffect = "plain" | "sunset" | "aurora" | "orchid" | "ocean" | "peach-glow" | "rose-milk" | "lavender-dream" | "mint-cream" | "golden-sand" | "sky-soft" | "coffee-cream" | "night-pearl" | "cherry-soft" | "mediterranean" | "spring-meadow" | "berry-cream" | "twilight" | "citrus" | "cotton-candy";
 
 const ACCENT_THEMES: Array<{ id: AccentTheme; label: string; swatch: string }> = [
   { id: "sky", label: "Sky", swatch: "#38bdf8" },
@@ -120,6 +120,11 @@ const ACCENT_THEMES: Array<{ id: AccentTheme; label: string; swatch: string }> =
   { id: "olive", label: "Olive", swatch: "#84cc16" },
   { id: "stone", label: "Stone", swatch: "#78716c" },
   { id: "plum", label: "Plum", swatch: "#7e22ce" },
+  { id: "forest", label: "Forest", swatch: "#16a34a" },
+  { id: "crimson", label: "Crimson", swatch: "#dc2626" },
+  { id: "grape", label: "Grape", swatch: "#9333ea" },
+  { id: "turquoise", label: "Turquoise", swatch: "#0d9488" },
+  { id: "burgundy", label: "Burgundy", swatch: "#9f1239" },
 ];
 
 const TEXT_SIZE_OPTIONS: Array<{ id: UiTextSize; label: string; helper: string }> = [
@@ -144,6 +149,11 @@ const ACCENT_EFFECTS: Array<{ id: AccentEffect; label: string; helper: string; s
   { id: "night-pearl", label: "Night Pearl", helper: "Soft dark pearl mood", swatch: "linear-gradient(135deg, #111827, #1f2937, #312e81)", vars: { "--app-gradient-a": "#111827", "--app-gradient-b": "#1f2937", "--app-gradient-c": "#312e81" } as React.CSSProperties },
   { id: "cherry-soft", label: "Cherry Soft", helper: "Muted cherry and cream", swatch: "linear-gradient(135deg, #fff5f5, #ffe0e0, #fff1e8)", vars: { "--app-gradient-a": "#fff5f5", "--app-gradient-b": "#ffe0e0", "--app-gradient-c": "#fff1e8" } as React.CSSProperties },
   { id: "mediterranean", label: "Mediterranean", helper: "Aegean blue and sunny cream", swatch: "linear-gradient(135deg, #f2fbff, #dff3ed, #fff2d9)", vars: { "--app-gradient-a": "#f2fbff", "--app-gradient-b": "#dff3ed", "--app-gradient-c": "#fff2d9" } as React.CSSProperties },
+  { id: "spring-meadow", label: "Spring Meadow", helper: "Fresh green and cream", swatch: "linear-gradient(135deg, #f0fdf4, #d9f9e6, #eefbe0)", vars: { "--app-gradient-a": "#f0fdf4", "--app-gradient-b": "#d9f9e6", "--app-gradient-c": "#eefbe0" } as React.CSSProperties },
+  { id: "berry-cream", label: "Berry Cream", helper: "Soft berry and cream", swatch: "linear-gradient(135deg, #fff5f9, #ffe0ee, #fff0f5)", vars: { "--app-gradient-a": "#fff5f9", "--app-gradient-b": "#ffe0ee", "--app-gradient-c": "#fff0f5" } as React.CSSProperties },
+  { id: "twilight", label: "Twilight", helper: "Blue into purple dusk", swatch: "linear-gradient(135deg, #eef2ff, #e0e7ff, #ede9fe)", vars: { "--app-gradient-a": "#eef2ff", "--app-gradient-b": "#e0e7ff", "--app-gradient-c": "#ede9fe" } as React.CSSProperties },
+  { id: "citrus", label: "Citrus", helper: "Lemon and lime zest", swatch: "linear-gradient(135deg, #fefce8, #ecfccb, #fff7d6)", vars: { "--app-gradient-a": "#fefce8", "--app-gradient-b": "#ecfccb", "--app-gradient-c": "#fff7d6" } as React.CSSProperties },
+  { id: "cotton-candy", label: "Cotton Candy", helper: "Pink and blue pastel", swatch: "linear-gradient(135deg, #fdf2ff, #fce7f3, #e0f2fe)", vars: { "--app-gradient-a": "#fdf2ff", "--app-gradient-b": "#fce7f3", "--app-gradient-c": "#e0f2fe" } as React.CSSProperties },
 ];
 
 type RichTextPicker = "textColor" | "overlayColor" | "textSize";
@@ -678,6 +688,11 @@ const ACCENT_VARS: Record<AccentTheme, React.CSSProperties> = {
   olive: makeAccentVars("#f7fee7", "#ecfccb", "#d9f99d", "#bef264", "#84cc16", "#65a30d", "#3f6212", "#f7fee7", "#fefce8"),
   stone: makeAccentVars("#fafaf9", "#f5f5f4", "#e7e5e4", "#d6d3d1", "#78716c", "#57534e", "#44403c", "#fafaf9", "#f5f5f4"),
   plum: makeAccentVars("#faf5ff", "#f3e8ff", "#e9d5ff", "#d8b4fe", "#7e22ce", "#6b21a8", "#581c87", "#faf5ff", "#fdf4ff"),
+  forest: makeAccentVars("#f0fdf4", "#dcfce7", "#bbf7d0", "#86efac", "#22c55e", "#16a34a", "#166534", "#f0fdf4", "#ecfdf5"),
+  crimson: makeAccentVars("#fef2f2", "#fee2e2", "#fecaca", "#fca5a5", "#ef4444", "#dc2626", "#991b1b", "#fef2f2", "#fff1f2"),
+  grape: makeAccentVars("#faf5ff", "#f3e8ff", "#e9d5ff", "#d8b4fe", "#c084fc", "#9333ea", "#6b21a8", "#faf5ff", "#fdf4ff"),
+  turquoise: makeAccentVars("#f0fdfa", "#ccfbf1", "#99f6e4", "#5eead4", "#2dd4bf", "#0d9488", "#115e59", "#f0fdfa", "#ecfeff"),
+  burgundy: makeAccentVars("#fdf2f4", "#fce7ea", "#f9d0d8", "#f2a3b3", "#e11d48", "#9f1239", "#881337", "#fdf2f4", "#fff1f2"),
 };
 
 type ProfileWithAvatar = Profile & {
@@ -2505,6 +2520,60 @@ export default function App() {
           : "Offline"
     : "Choose a user or group from the left";
   const activeAvatarUrl = activeIsGroup ? getConversationAvatarUrl(activeConversation) : getAvatarUrl(activeOtherUser);
+
+  // Leave the current chat and go back to the empty "pick a chat" state.
+  const closeActiveChat = () => {
+    activeConversationIdRef.current = null;
+    setActiveConversation(null);
+    setActiveOtherUser(null);
+    setActiveMembers([]);
+    setEditingMessage(null);
+    setMobilePane("list");
+  };
+
+  // Escape closes the open chat (WhatsApp-style), but only once nothing else is
+  // using Escape — open menus, pickers, dialogs, search and message editing all
+  // get first claim on the key.
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (
+        settingsOpen ||
+        callStatus !== "idle" ||
+        newChatOpen ||
+        groupComposerOpen ||
+        chatSearchOpen ||
+        screenshotEditorOpen ||
+        editingMessage ||
+        showEmojiPicker ||
+        showStickerPicker ||
+        showAnimatedEmojiPicker ||
+        richTextPicker !== null ||
+        richTextToolbarMenuOpen ||
+        chatSortMenuOpen
+      ) {
+        return;
+      }
+      if (activeConversationIdRef.current) closeActiveChat();
+    };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [
+    settingsOpen,
+    callStatus,
+    newChatOpen,
+    groupComposerOpen,
+    chatSearchOpen,
+    screenshotEditorOpen,
+    editingMessage,
+    showEmojiPicker,
+    showStickerPicker,
+    showAnimatedEmojiPicker,
+    richTextPicker,
+    richTextToolbarMenuOpen,
+    chatSortMenuOpen,
+  ]);
+
   const themeStyle = { ...ACCENT_VARS[accentTheme], ...(ACCENT_EFFECTS.find((effect) => effect.id === accentEffect)?.vars || {}) } as React.CSSProperties;
   const textSizeClass = `elelany-size-${uiTextSize}`;
   const toolbarIconSizeClass = `elelany-rich-icons-${richTextIconSize}`;
@@ -3385,13 +3454,8 @@ export default function App() {
 
       const currentActiveId = activeConversationIdRef.current;
 
-      if (!currentActiveId && listItems[0]) {
-        activeConversationIdRef.current = listItems[0].conversation.id;
-        setActiveConversation(listItems[0].conversation);
-        setActiveOtherUser(listItems[0].otherUser);
-        setActiveMembers(listItems[0].members);
-        return listItems;
-      }
+      // No auto-selecting the first chat: on launch (and after an update) the
+      // app opens with no chat open, so the user picks one — like WhatsApp.
 
       if (currentActiveId) {
         const refreshedActive = listItems.find((item) => item.conversation.id === currentActiveId);
@@ -10039,7 +10103,7 @@ export default function App() {
                                       )}
                                     </span>
                                   ) : (
-                                    <TwemojiText value={`${muted ? "Muted • " : ""}${item.lastMessage?.body_text || item.displayStatus}`} />
+                                    <TwemojiText value={`${muted ? "Muted • " : ""}${item.lastMessage ? getMessagePreviewText(item.lastMessage) : item.displayStatus}`} />
                                   )}
                               </div>
                             </div>
@@ -10396,7 +10460,20 @@ export default function App() {
           />
         </aside>
 
-        <main className={`min-h-0 min-w-0 flex-1 flex-col bg-[#ffffff] md:flex ${mobilePane === "chat" ? "flex" : "hidden"}`}>
+        <main className={`relative min-h-0 min-w-0 flex-1 flex-col bg-[#ffffff] md:flex ${mobilePane === "chat" ? "flex" : "hidden"}`}>
+          {/* Nothing selected: a clean prompt instead of an empty chat frame. */}
+          {!activeConversation ? (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white px-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-50 text-slate-300">
+                <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                </svg>
+              </div>
+              <div className="text-[17px] font-semibold text-slate-700">No chat open</div>
+              <div className="max-w-[280px] text-[14px] text-slate-400">Choose a conversation from the left to start messaging.</div>
+            </div>
+          ) : null}
+
           <div className="shrink-0 border-b border-slate-200 px-4 py-4 sm:px-6">
             <div className="flex items-center justify-between">
               <div className="flex min-w-0 items-center gap-3">
