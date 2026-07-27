@@ -113,7 +113,13 @@
       "Bash(cp src/fonts/*.woff2 landing/fonts/)",
       "Bash(cp src/fonts/lato.css landing/fonts/lato.css)",
       "Bash(cp public/pwa-512.png landing/)",
-      "Bash(echo \"tsc $?\")"
+      "Bash(echo \"tsc $?\")",
+      "Bash(grep -n '^  {$\\\\|id: \"\\\\|label: \"' src/App.tsx)",
+      "Bash(awk -F: '$1>728 && $1<840')",
+      "Bash(awk 'NR>=857 && NR<=1010 && \\(/id: \"/ || /label: \"/ || /accent: \"/ || /bg: \"/ || /src: \"data/\\)' src/App.tsx)",
+      "Bash(grep -iE \"\\\\.\\(png|jpg|jpeg|webp\\)$\")",
+      "Bash(grep -iE \"\\\\.\\(png|jpg|jpeg|webp|gif\\)$\")",
+      "Bash(awk '{print $5, $9}')"
     ]
   }
 }

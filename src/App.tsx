@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import type { ContactRequestRow, Conversation, MessageRow, Profile, ReactionRow } from "./types";
 import { ANIMATED_EMOJI_META } from "./animatedEmojiMeta";
+import { FLOWER_STICKERS } from "./flowerStickers";
 
 type ChatListItem = {
   conversation: Conversation;
@@ -2607,7 +2608,7 @@ export default function App() {
   );
   const builtInStickers = useMemo<AnySticker[]>(
     () =>
-      STICKERS.map((sticker) => ({
+      [...FLOWER_STICKERS, ...STICKERS].map((sticker) => ({
         ...sticker,
         accent: sticker.accent || "#0f766e",
         bg: sticker.bg || "transparent",
