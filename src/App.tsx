@@ -9367,11 +9367,8 @@ export default function App() {
 
         .elelany-lato:not(.accent-effect-plain) .other-message-bubble {
           border-color: color-mix(in srgb, var(--app-gradient-b) 30%, white) !important;
-          background:
-            linear-gradient(135deg,
-              rgba(255,255,255,0.98),
-              color-mix(in srgb, var(--app-gradient-a) 22%, white)
-            ) !important;
+          /* Received bubbles: a very light gray instead of white. */
+          background: #f6f7f9 !important;
         }
 
         .elelany-lato:not(.accent-effect-plain) .composer-surface {
@@ -9493,6 +9490,8 @@ export default function App() {
 
         .elelany-lato .other-message-bubble {
           border-color: var(--accent-50) !important;
+          /* Received bubbles: a very light gray instead of white. */
+          background-color: #f6f7f9 !important;
         }
 
         .elelany-lato .composer-surface {
@@ -11585,7 +11584,6 @@ export default function App() {
                                   <span className="text-[42px] leading-none">{sticker.emoji}</span>
                                 )}
                                 <span className="mt-2 text-[13px] font-semibold text-slate-700">{sticker.label}</span>
-                                <span className="mt-1 text-[11px] text-slate-400">{sticker.packName || "Built-in"}</span>
                               </button>
                               <button
                                 type="button"
