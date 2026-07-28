@@ -23,5 +23,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# The landing/marketing site is its own separate git repo (see landing/.git).
+# The landing/marketing site lives in its own repo, outside this folder
+# (moved to ../elelany-landing). Kept here so a stray landing/ never gets
+# committed into the app repo again.
 landing/
