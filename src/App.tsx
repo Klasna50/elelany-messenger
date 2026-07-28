@@ -9368,7 +9368,7 @@ export default function App() {
         .elelany-lato:not(.accent-effect-plain) .other-message-bubble {
           border-color: color-mix(in srgb, var(--app-gradient-b) 30%, white) !important;
           /* Received bubbles: a very light gray instead of white. */
-          background: #f6f7f9 !important;
+          background: #fafbfc !important;
         }
 
         .elelany-lato:not(.accent-effect-plain) .composer-surface {
@@ -9491,7 +9491,7 @@ export default function App() {
         .elelany-lato .other-message-bubble {
           border-color: var(--accent-50) !important;
           /* Received bubbles: a very light gray instead of white. */
-          background-color: #f6f7f9 !important;
+          background-color: #fafbfc !important;
         }
 
         .elelany-lato .composer-surface {
