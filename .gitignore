@@ -22,3 +22,6 @@ vite.config.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# The landing/marketing site is its own separate git repo (see landing/.git).
+landing/
