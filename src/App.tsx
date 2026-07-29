@@ -9350,7 +9350,9 @@ export default function App() {
         }
 
         .elelany-lato.app-bg > div {
-          background: rgba(255,255,255,0.96) !important;
+          /* Same gray as the sidebar, so the floating message card sits on one
+             even gray ground. */
+          background: #f4f4f4 !important;
           transition: background 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
         }
 
