@@ -4,6 +4,7 @@ import { supabase } from "./supabaseClient";
 import type { ContactRequestRow, Conversation, MessageRow, Profile, ReactionRow } from "./types";
 import { ANIMATED_EMOJI_META } from "./animatedEmojiMeta";
 import { FLOWER_STICKERS } from "./flowerStickers";
+import { FLOWER_STICKERS_2 } from "./flowerStickers2";
 
 type ChatListItem = {
   conversation: Conversation;
@@ -2608,7 +2609,7 @@ export default function App() {
   );
   const builtInStickers = useMemo<AnySticker[]>(
     () =>
-      [...FLOWER_STICKERS, ...STICKERS].map((sticker) => ({
+      [...FLOWER_STICKERS, ...FLOWER_STICKERS_2, ...STICKERS].map((sticker) => ({
         ...sticker,
         accent: sticker.accent || "#0f766e",
         bg: sticker.bg || "transparent",

@@ -142,7 +142,8 @@
       "Bash(grep -noE \"useState[^;]*Accent[^;]{0,60}|DEFAULT_ACCENT|accentTheme[^=]*=\\\\s*[^;]{0,40}|storedAccent[^;]{0,40}\" src/App.tsx)",
       "Bash(kill %1)",
       "Bash(pkill -f \"http.server 4321\")",
-      "Bash(grep -n 'mx-auto flex h-\\\\[100dvh\\\\]\\\\|<aside\\\\|<main className=`min-h-0 min-w-0 flex-1' src/App.tsx)"
+      "Bash(grep -n 'mx-auto flex h-\\\\[100dvh\\\\]\\\\|<aside\\\\|<main className=`min-h-0 min-w-0 flex-1' src/App.tsx)",
+      "Bash(awk '{print $5}')"
     ]
   }
 }

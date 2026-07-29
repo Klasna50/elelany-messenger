@@ -33,12 +33,27 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,woff2,png,svg,ico}"],
+        // The flower stickers are several MB; don't precache them on install.
+        // They load on demand and are then cached at runtime (rule below).
+        globIgnores: ["**/flower-*.png"],
         navigateFallback: "/index.html",
         cleanupOutdatedCaches: true,
         // The precache is the app shell only. Never let the SW serve cached
         // Supabase responses — auth, realtime and messages must hit the
         // network every time, or the chat would show stale data offline.
         navigateFallbackDenylist: [/^\/rest\//, /^\/auth\//, /^\/realtime\//, /^\/storage\//],
+        runtimeCaching: [
+          {
+            // Sticker images: cache the first time they're shown, then serve
+            // from cache (offline-friendly without bloating the install).
+            urlPattern: /\/assets\/flower-[^/]+\.png$/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "elelany-stickers",
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 90 },
+            },
+          },
+        ],
       },
       // The dev server doesn't need the SW; enable only when debugging it.
       devOptions: { enabled: false },
