@@ -1019,7 +1019,12 @@ function getMessageThumbnailUrl(message: MessageRow): string {
 
   for (const pattern of patterns) {
     const tag = html.match(pattern)?.[0];
-    const src = tag?.match(/\ssrc=["']([^"']+)["']/i)?.[1];
+    if (!tag) continue;
+    // Built-in stickers: use the local copy by id (the stored URL won't load
+    // on another machine).
+    const stickerId = tag.match(/\bdata-sticker=["']([^"']+)["']/i)?.[1];
+    if (stickerId && BUILTIN_STICKER_SRC_BY_ID[stickerId]) return BUILTIN_STICKER_SRC_BY_ID[stickerId];
+    const src = tag.match(/\ssrc=["']([^"']+)["']/i)?.[1];
     if (src) return src;
   }
 
@@ -1061,6 +1066,30 @@ function buildStickerText(sticker: AnySticker): string {
   return `Sticker: ${sticker.label}`;
 }
 
+// Built-in stickers embed a build-specific image URL in the message HTML
+// (content-hashed on the web, a file:// path in the desktop app), which won't
+// load on anyone else's machine — the receiver saw an empty frame. Their stable
+// `data-sticker` id does travel, so we re-resolve the image from the local copy
+// by id whenever we render a sticker. Fixes messages already sent, too.
+const BUILTIN_STICKER_SRC_BY_ID: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const sticker of [...FLOWER_STICKERS, ...FLOWER_STICKERS_2, ...STICKERS] as AnySticker[]) {
+    if (sticker.src) map[sticker.id] = sticker.src;
+  }
+  return map;
+})();
+
+function resolveBuiltinStickerSrc(html: string): string {
+  if (!html || !/data-sticker=/i.test(html)) return html;
+  return html.replace(/<img\b[^>]*\bdata-sticker=["']([^"']+)["'][^>]*>/gi, (tag: string, id: string) => {
+    const localSrc = BUILTIN_STICKER_SRC_BY_ID[id];
+    if (!localSrc) return tag;
+    return /\ssrc=/i.test(tag)
+      ? tag.replace(/\ssrc=["'][^"']*["']/i, ` src="${localSrc}"`)
+      : tag.replace(/<img\b/i, `<img src="${localSrc}"`);
+  });
+}
+
 
 function buildAnimatedEmojiHtml(item: AnimatedEmojiItem): string {
   const src = `${ANIMATED_EMOJI_BASE_URL}/${encodeURIComponent(item.filename)}`;
@@ -1087,7 +1116,11 @@ function getStickerPreviewData(html: string): { src?: string; emoji?: string; al
   const imgMatch = html.match(/<img\b[^>]*data-sticker[^>]*>/i);
   if (imgMatch) {
     const tag = imgMatch[0];
-    const src = tag.match(/\ssrc=["']([^"']+)["']/i)?.[1] || "";
+    const id = tag.match(/\bdata-sticker=["']([^"']+)["']/i)?.[1] || "";
+    const storedSrc = tag.match(/\ssrc=["']([^"']+)["']/i)?.[1] || "";
+    // Prefer the local copy of a built-in sticker (the stored URL is
+    // build-specific and won't load on other machines).
+    const src = (id && BUILTIN_STICKER_SRC_BY_ID[id]) || storedSrc;
     const alt = tag.match(/\salt=["']([^"']*)["']/i)?.[1] || "Sticker";
     return src ? { src, alt } : null;
   }
@@ -1898,7 +1931,7 @@ function MessageBubble({
   const senderName = message.profiles?.display_name || "User";
   const seenIconColor = seenComplete || seenByOther ? "#22c55e" : "#94a3b8";
   const rawMessageHtml = message.body_html || textToHtml(message.body_text);
-  const messageHtml = renderTwemojiHtml(rawMessageHtml);
+  const messageHtml = renderTwemojiHtml(resolveBuiltinStickerSrc(rawMessageHtml));
   const isStickerMessage = isStickerMessageRow(message);
   const isAttachmentMessage = isAttachmentMessageRow(message);
   const isAnimatedEmojiOnlyMessage = isAnimatedEmojiOnlyHtml(messageHtml);
