@@ -9595,9 +9595,9 @@ export default function App() {
       <div className={`elelany-lato ${textSizeClass} accent-effect-${accentEffect} app-bg min-h-screen p-0 sm:p-4 md:p-6`} style={themeStyle}>
       {/* Full bleed on a phone; the floating card look starts at sm. 100dvh
           rather than vh so the browser's own chrome doesn't crop the composer. */}
-      <div className="mx-auto flex h-[100dvh] max-w-7xl overflow-hidden rounded-none border-0 bg-[#f1f2f4] shadow-2xl backdrop-blur sm:h-[92vh] sm:rounded-[28px] sm:border sm:border-slate-100">
+      <div className="mx-auto flex h-[100dvh] max-w-7xl overflow-hidden rounded-none border-0 bg-[#f4f4f4] shadow-2xl backdrop-blur sm:h-[92vh] sm:rounded-[28px] sm:border sm:border-slate-100">
         <aside
-          className={`relative shrink-0 overflow-hidden bg-[#f1f2f4] md:flex ${
+          className={`relative shrink-0 overflow-hidden bg-[#f4f4f4] md:flex ${
             mobilePane === "list" ? "flex w-full max-md:!w-full" : "hidden"
           }`}
           style={{ width: `${sidebarWidth}px` }}
