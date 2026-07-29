@@ -214,6 +214,51 @@ function createMainWindow() {
         )
         .catch(() => undefined);
     }
+
+    // Windows only: Chromium shows classic, always-visible scrollbars there,
+    // unlike macOS's overlay scrollbars. Make them thin and auto-hiding —
+    // invisible by default, fading in only while scrolling (and on hover so you
+    // can still grab them), to match the Mac.
+    if (process.platform === "win32") {
+      mainWindow.webContents.insertCSS(`
+        *::-webkit-scrollbar { width: 10px; height: 10px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *::-webkit-scrollbar-corner { background: transparent; }
+        *::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 8px;
+          border: 3px solid transparent;
+          background-clip: content-box;
+          transition: background-color 0.2s ease;
+        }
+        html.elelany-scrolling *::-webkit-scrollbar-thumb,
+        *:hover::-webkit-scrollbar-thumb {
+          background: rgba(100, 116, 139, 0.40);
+          background-clip: content-box;
+        }
+        *::-webkit-scrollbar-thumb:hover {
+          background: rgba(100, 116, 139, 0.60);
+          background-clip: content-box;
+        }
+      `);
+
+      mainWindow.webContents
+        .executeJavaScript(
+          `(function () {
+             if (window.__elelanyScrollHide) return;
+             window.__elelanyScrollHide = true;
+             var hideTimer;
+             document.addEventListener("scroll", function () {
+               document.documentElement.classList.add("elelany-scrolling");
+               clearTimeout(hideTimer);
+               hideTimer = setTimeout(function () {
+                 document.documentElement.classList.remove("elelany-scrolling");
+               }, 900);
+             }, true);
+           })();`
+        )
+        .catch(() => undefined);
+    }
   });
 
   // External links (invite mailto:, docs, attachments) open in the real browser.
