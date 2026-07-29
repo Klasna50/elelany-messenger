@@ -195,11 +195,10 @@ function createMainWindow() {
     if (process.platform === "darwin") {
       mainWindow.webContents.insertCSS(`
         .app-bg > div { height: 100vh !important; }
-        /* Put the traffic-light clearance inside EACH panel so the strip takes
-           that panel's own colour — grey above the sidebar, white above the
-           chat/composer — with no seam. */
-        .app-bg > div > aside,
-        .app-bg > div > main { padding-top: 30px !important; }
+        /* The traffic lights float over the sidebar's top-left, so only the
+           sidebar needs the clearance. The message panel floats as its own
+           card with its own top margin. */
+        .app-bg > div > aside { padding-top: 30px !important; }
       `);
 
       mainWindow.webContents

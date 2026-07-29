@@ -119,7 +119,30 @@
       "Bash(awk 'NR>=857 && NR<=1010 && \\(/id: \"/ || /label: \"/ || /accent: \"/ || /bg: \"/ || /src: \"data/\\)' src/App.tsx)",
       "Bash(grep -iE \"\\\\.\\(png|jpg|jpeg|webp\\)$\")",
       "Bash(grep -iE \"\\\\.\\(png|jpg|jpeg|webp|gif\\)$\")",
-      "Bash(awk '{print $5, $9}')"
+      "Bash(awk '{print $5, $9}')",
+      "Bash(git rm *)",
+      "Bash(git -C landing init -q)",
+      "Bash(git -C landing add -A)",
+      "Bash(git -C landing -c user.name=\"Klasna50\" -c user.email=\"klasna50@gmail.com\" commit -q -m \"Landing page \\(separated from the app repo\\)\")",
+      "Bash(git -C landing log --oneline -1)",
+      "Bash(git -C landing status --short)",
+      "Bash(git -C landing remote -v)",
+      "Bash([ -e \"$DST\" ])",
+      "Bash(git -C /Users/v/Downloads/elelany-landing log --oneline -1)",
+      "Bash(git -C /Users/v/Downloads/elelany-landing rev-parse --abbrev-ref HEAD)",
+      "Bash(git -C /Users/v/Downloads/elelany-landing rev-parse --short HEAD)",
+      "Bash(echo \"LANDING: /Users/v/Downloads/elelany-landing       \\(repo: $\\(git -C /Users/v/Downloads/elelany-landing rev-parse --short HEAD\\)\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://github.com/Klasna50/elelany-landing\")",
+      "Bash(git -C /Users/v/Downloads/elelany-landing remote remove origin)",
+      "Bash(git -C /Users/v/Downloads/elelany-landing remote add origin https://github.com/Klasna50/elelany-landing.git)",
+      "Bash(git -C /Users/v/Downloads/elelany-landing push -u origin main)",
+      "Bash(echo \"=== OLD: app-folder landing/ ===\" && ls -la \"/Users/v/Downloads/ELELANY 19.07.2026/landing/\" 2>&1 | head -20 *)",
+      "Bash(grep -noE \"accent-400['\\\\\"]?\\\\s*[:,]?\\\\s*['\\\\\"]?#[0-9a-fA-F]{6}|#f\\\\w{5}[^;]{0,30}accent\" src/App.tsx)",
+      "Bash(grep -noE \"\\(peach|sunset|default|orange\\)[^\\\\\"]{0,40}#[0-9a-fA-F]{6}\" src/App.tsx)",
+      "Bash(grep -noE \"useState[^;]*Accent[^;]{0,60}|DEFAULT_ACCENT|accentTheme[^=]*=\\\\s*[^;]{0,40}|storedAccent[^;]{0,40}\" src/App.tsx)",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"http.server 4321\")",
+      "Bash(grep -n 'mx-auto flex h-\\\\[100dvh\\\\]\\\\|<aside\\\\|<main className=`min-h-0 min-w-0 flex-1' src/App.tsx)"
     ]
   }
 }

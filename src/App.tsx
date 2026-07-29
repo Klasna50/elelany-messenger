@@ -9595,9 +9595,9 @@ export default function App() {
       <div className={`elelany-lato ${textSizeClass} accent-effect-${accentEffect} app-bg min-h-screen p-0 sm:p-4 md:p-6`} style={themeStyle}>
       {/* Full bleed on a phone; the floating card look starts at sm. 100dvh
           rather than vh so the browser's own chrome doesn't crop the composer. */}
-      <div className="mx-auto flex h-[100dvh] max-w-7xl overflow-hidden rounded-none border-0 bg-white/96 shadow-2xl backdrop-blur sm:h-[92vh] sm:rounded-[28px] sm:border sm:border-slate-100">
+      <div className="mx-auto flex h-[100dvh] max-w-7xl overflow-hidden rounded-none border-0 bg-[#f1f2f4] shadow-2xl backdrop-blur sm:h-[92vh] sm:rounded-[28px] sm:border sm:border-slate-100">
         <aside
-          className={`relative shrink-0 overflow-hidden border-r border-slate-200 bg-[#f4f4f4] md:flex ${
+          className={`relative shrink-0 overflow-hidden bg-[#f1f2f4] md:flex ${
             mobilePane === "list" ? "flex w-full max-md:!w-full" : "hidden"
           }`}
           style={{ width: `${sidebarWidth}px` }}
@@ -10486,7 +10486,7 @@ export default function App() {
           />
         </aside>
 
-        <main className={`relative min-h-0 min-w-0 flex-1 flex-col bg-[#ffffff] md:flex ${mobilePane === "chat" ? "flex" : "hidden"}`}>
+        <main className={`relative min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#ffffff] md:flex md:my-4 md:ml-1.5 md:mr-4 md:rounded-[22px] md:shadow-[0_6px_22px_rgba(15,23,42,0.10),0_2px_6px_rgba(15,23,42,0.05)] ${mobilePane === "chat" ? "flex" : "hidden"}`}>
           {/* Nothing selected: a clean prompt instead of an empty chat frame. */}
           {!activeConversation ? (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white px-8 text-center">
