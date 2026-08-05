@@ -189,6 +189,23 @@ const RICH_TEXT_TOOLBAR_MODE_OPTIONS: Array<{ id: RichTextToolbarMode; label: st
   { id: "all", label: "View all", helper: "Text tools, media and emoji buttons" },
 ];
 
+// Colour of the unread-count circle on the chat list. The number inside stays
+// white; "Theme default" keeps the original dark badge so nothing changes for
+// anyone who never opens this setting.
+type UnreadBadgeColor = "default" | "red" | "black" | "green";
+const UNREAD_BADGE_COLOR_VALUES: Record<UnreadBadgeColor, string> = {
+  default: "#1e293b",
+  red: "#ef4444",
+  black: "#0f172a",
+  green: "#16a34a",
+};
+const UNREAD_BADGE_COLOR_OPTIONS: Array<{ id: UnreadBadgeColor; label: string }> = [
+  { id: "default", label: "Theme default" },
+  { id: "red", label: "Red" },
+  { id: "black", label: "Black" },
+  { id: "green", label: "Green" },
+];
+
 const RICH_TEXT_COLORS = [
   "#0f172a",
   "#475569",
@@ -944,6 +961,155 @@ function cleanComposerHtml(html: string): string {
     .replace(/<span([^>]*)>\s*<\/span>/gi, "")
     .replace(/<font([^>]*)>/gi, "<span>")
     .replace(/<\/font>/gi, "</span>");
+}
+
+// Remove empty line-break markup that sits at the very start or end of composer
+// HTML (leading/trailing <br>, empty <div>/<p> lines, stray whitespace/&nbsp;).
+// Chromium's contentEditable often won't let you backspace away a trailing/
+// leading break, so we strip those edges when loading a message for editing and
+// again on send \u2014 the message then keeps only the line breaks between content.
+function stripEdgeLineBreaks(html: string): string {
+  const edge =
+    "(?:\\s|&nbsp;|<br\\s*/?>|<div>\\s*(?:<br\\s*/?>)?\\s*</div>|<p>\\s*(?:<br\\s*/?>)?\\s*</p>)";
+  const leadRe = new RegExp(`^(?:${edge})+`, "i");
+  const trailRe = new RegExp(`(?:${edge})+$`, "i");
+  let out = html;
+  let prev: string;
+  do {
+    prev = out;
+    out = out.replace(leadRe, "").replace(trailRe, "");
+  } while (out !== prev);
+  return out;
+}
+
+// Pasting rich content (a copied message, formatted text) should keep bold /
+// italic / underline / colors / line breaks / emojis, but the result is stored
+// and rendered as HTML on every client, so it must be sanitised to a safe
+// whitelist first (no scripts, event handlers, external styles or unknown tags).
+const PASTE_ALLOWED_TAGS = new Set([
+  "B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "BR", "DIV", "P", "SPAN",
+  "UL", "OL", "LI", "BLOCKQUOTE", "H1", "H2", "H3", "H4", "H5", "H6", "IMG",
+]);
+const PASTE_DROP_TAGS = new Set([
+  "SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META", "SVG", "MATH",
+  "NOSCRIPT", "TEMPLATE", "FORM", "INPUT", "BUTTON", "TEXTAREA", "SELECT",
+]);
+const PASTE_ALLOWED_STYLE_PROPS = new Set([
+  "color", "background", "background-color", "font-weight", "font-style",
+  "text-decoration", "text-decoration-line", "text-decoration-style",
+  "font-size", "line-height",
+]);
+const PASTE_ALLOWED_IMG_ATTRS = new Set([
+  "src", "alt", "class", "width", "height", "draggable",
+  "data-twemoji", "data-fallback-src", "data-animated-emoji", "data-sticker",
+]);
+
+function sanitizePastedStyle(styleText: string): string {
+  const out: string[] = [];
+  for (const declaration of styleText.split(";")) {
+    const idx = declaration.indexOf(":");
+    if (idx < 0) continue;
+    const prop = declaration.slice(0, idx).trim().toLowerCase();
+    let value = declaration.slice(idx + 1).trim();
+    if (!prop || !value || !PASTE_ALLOWED_STYLE_PROPS.has(prop)) continue;
+    if (/url\(|expression\(|javascript:|@import|[<>]/i.test(value)) continue;
+    if (prop === "font-size") {
+      const size = parseFloat(value);
+      if (!Number.isFinite(size)) continue;
+      if (/px/i.test(value) && size > 60) value = "60px";
+    }
+    out.push(`${prop}: ${value}`);
+  }
+  return out.join("; ");
+}
+
+function isSafePastedImgSrc(src: string): boolean {
+  const value = src.trim();
+  return /^https?:\/\//i.test(value) || /^data:image\/(png|jpe?g|gif|webp|bmp);/i.test(value);
+}
+
+function sanitizePastedHtml(html: string): string {
+  if (typeof document === "undefined" || !html) return "";
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
+  const unwrap = (element: Element) => {
+    const parent = element.parentNode;
+    if (!parent) {
+      element.remove();
+      return;
+    }
+    while (element.firstChild) parent.insertBefore(element.firstChild, element);
+    parent.removeChild(element);
+  };
+
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.COMMENT_NODE) {
+        child.parentNode?.removeChild(child);
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue; // keep text nodes
+
+      const element = child as HTMLElement;
+      const tag = element.tagName.toUpperCase();
+
+      if (PASTE_DROP_TAGS.has(tag)) {
+        element.remove();
+        continue;
+      }
+
+      if (!PASTE_ALLOWED_TAGS.has(tag)) {
+        // Unknown tag (including links): keep the inner text/formatting, drop
+        // the wrapper so no href or unexpected element type sneaks through.
+        walk(element);
+        unwrap(element);
+        continue;
+      }
+
+      if (tag === "IMG") {
+        const src = element.getAttribute("src") || "";
+        const hasBuiltinId =
+          element.hasAttribute("data-sticker") ||
+          element.hasAttribute("data-animated-emoji") ||
+          element.hasAttribute("data-twemoji");
+        if (!isSafePastedImgSrc(src) && !hasBuiltinId) {
+          element.remove();
+          continue;
+        }
+        for (const attr of Array.from(element.attributes)) {
+          const name = attr.name.toLowerCase();
+          if (name === "style") {
+            const clean = sanitizePastedStyle(attr.value);
+            if (clean) element.setAttribute("style", clean);
+            else element.removeAttribute("style");
+          } else if (!PASTE_ALLOWED_IMG_ATTRS.has(name)) {
+            element.removeAttribute(attr.name);
+          }
+        }
+        // A builtin sticker/emoji re-resolves its picture by id at render time,
+        // so an unsafe (build-specific) src is dropped rather than trusted.
+        if (!isSafePastedImgSrc(element.getAttribute("src") || "")) {
+          element.removeAttribute("src");
+        }
+        continue;
+      }
+
+      for (const attr of Array.from(element.attributes)) {
+        if (attr.name.toLowerCase() === "style") {
+          const clean = sanitizePastedStyle(attr.value);
+          if (clean) element.setAttribute("style", clean);
+          else element.removeAttribute("style");
+        } else {
+          element.removeAttribute(attr.name);
+        }
+      }
+      walk(element);
+    }
+  };
+
+  walk(template.content);
+  return template.innerHTML;
 }
 
 function htmlToText(html: string): string {
@@ -2361,6 +2527,7 @@ export default function App() {
   const [uiTextSize, setUiTextSize] = useState<UiTextSize>("normal");
   const [richTextIconSize, setRichTextIconSize] = useState<RichTextIconSize>("normal");
   const [richTextToolbarMode, setRichTextToolbarMode] = useState<RichTextToolbarMode>("all");
+  const [unreadBadgeColor, setUnreadBadgeColor] = useState<UnreadBadgeColor>("default");
   const [richTextToolbarMenuOpen, setRichTextToolbarMenuOpen] = useState(false);
   const [editorActiveFormats, setEditorActiveFormats] = useState({ bold: false, italic: false, underline: false, bulletList: false, orderedList: false });
   const [groupComposerOpen, setGroupComposerOpen] = useState(false);
@@ -2849,6 +3016,11 @@ export default function App() {
     const savedTextSize = window.localStorage.getItem("elelany-text-size") as UiTextSize | null;
     const savedRichTextIconSize = window.localStorage.getItem("elelany-rich-text-icon-size") as RichTextIconSize | null;
     const savedRichTextToolbarMode = window.localStorage.getItem("elelany-rich-text-toolbar-mode") as RichTextToolbarMode | null;
+    const savedUnreadBadgeColor = window.localStorage.getItem("elelany-unread-badge-color") as UnreadBadgeColor | null;
+
+    if (savedUnreadBadgeColor && UNREAD_BADGE_COLOR_OPTIONS.some((option) => option.id === savedUnreadBadgeColor)) {
+      setUnreadBadgeColor(savedUnreadBadgeColor);
+    }
 
     if (savedAccent && ACCENT_THEMES.some((theme) => theme.id === savedAccent)) {
       setAccentTheme(savedAccent);
@@ -3111,6 +3283,10 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem("elelany-rich-text-icon-size", richTextIconSize);
   }, [richTextIconSize]);
+
+  useEffect(() => {
+    window.localStorage.setItem("elelany-unread-badge-color", unreadBadgeColor);
+  }, [unreadBadgeColor]);
 
   useEffect(() => {
     window.localStorage.setItem("elelany-rich-text-toolbar-mode", richTextToolbarMode);
@@ -5423,10 +5599,26 @@ export default function App() {
   const handleComposerPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     event.preventDefault();
 
+    const rawHtml = event.clipboardData.getData("text/html") || "";
     const plainText = event.clipboardData.getData("text/plain") || "";
-    if (!plainText) return;
 
     focusEditor();
+
+    // Keep formatting/line breaks/emojis when the clipboard carries HTML (e.g.
+    // copying a message), after sanitising it to a safe whitelist.
+    const safeHtml = rawHtml ? sanitizePastedHtml(rawHtml).trim() : "";
+    if (safeHtml) {
+      try {
+        document.execCommand("insertHTML", false, safeHtml);
+      } catch {
+        insertHtmlIntoEditor(safeHtml);
+        return;
+      }
+      syncEditorState();
+      return;
+    }
+
+    if (!plainText) return;
 
     try {
       document.execCommand("insertText", false, plainText);
@@ -7469,7 +7661,7 @@ export default function App() {
     const messageBodyHtml = hasContent
       ? isPlainEmojiOnlyComposerMessage
         ? buildPlainEmojiHtml(text)
-        : rawHtml
+        : stripEdgeLineBreaks(rawHtml)
       : "";
     const finalHtml = composerContext
       ? `${buildContextBannerHtml(composerContext)}${messageBodyHtml}`
@@ -7647,7 +7839,7 @@ export default function App() {
     setShowEmojiPicker(false);
     setShowStickerPicker(false);
     setStickerManagerOpen(false);
-    setEditorContent(message.body_html || textToHtml(message.body_text));
+    setEditorContent(stripEdgeLineBreaks(message.body_html || textToHtml(message.body_text)));
 
     window.setTimeout(() => {
       editorRef.current?.focus();
@@ -10131,7 +10323,10 @@ export default function App() {
                                   {favoriteConversationIds.includes(item.conversation.id) ? "★ " : ""}{item.displayName}
                                 </div>
                                 {unread ? (
-                                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] font-bold text-white ${mutedConversationIds.includes(item.conversation.id) ? "bg-slate-300" : "bg-slate-800"}`}>{unreadCount}</span>
+                                  <span
+                                    className="shrink-0 rounded-full px-2 py-0.5 text-[13px] font-bold text-white"
+                                    style={{ backgroundColor: mutedConversationIds.includes(item.conversation.id) ? "#cbd5e1" : UNREAD_BADGE_COLOR_VALUES[unreadBadgeColor] }}
+                                  >{unreadCount}</span>
                                 ) : null}
                               </div>
                               <div className={`active-chat-preview text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}>
@@ -10384,6 +10579,29 @@ export default function App() {
                       >
                         <span className="block font-semibold text-slate-700">{option.label}</span>
                         <span className="block text-[11px] text-slate-500">{option.id === "small" ? "Aa" : option.id === "large" ? "Aa+" : "Aa"}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <div className="mb-2 text-[13px] font-bold uppercase tracking-[0.16em] text-slate-400">Unread badge color</div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {UNREAD_BADGE_COLOR_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-2 text-center transition ${unreadBadgeColor === option.id ? "border-slate-300 bg-slate-50 shadow-sm" : "border-slate-100 hover:bg-slate-50"}`}
+                        onClick={() => setUnreadBadgeColor(option.id)}
+                        title={option.label}
+                      >
+                        <span
+                          className="flex h-6 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white"
+                          style={{ backgroundColor: UNREAD_BADGE_COLOR_VALUES[option.id] }}
+                        >
+                          3
+                        </span>
+                        <span className="truncate text-[11px] font-semibold text-slate-600">{option.label}</span>
                       </button>
                     ))}
                   </div>
