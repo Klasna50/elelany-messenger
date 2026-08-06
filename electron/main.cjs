@@ -272,10 +272,11 @@ function createMainWindow() {
   // for any selected text, and — when right-clicking a misspelled word —
   // spelling corrections at the top.
   mainWindow.webContents.on("context-menu", (_event, params) => {
-    const { editFlags, isEditable, selectionText, misspelledWord, dictionarySuggestions } = params;
-    const hasSelection = Boolean(selectionText && selectionText.trim());
+    const { editFlags, isEditable, misspelledWord, dictionarySuggestions } = params;
     const hasMisspelling = Boolean(misspelledWord);
-    if (!isEditable && !hasSelection) return;
+    // Only editable fields (the composer) get the native menu; message bubbles
+    // have their own in-app right-click menu, so a native one would double up.
+    if (!isEditable) return;
 
     const template = [];
 
@@ -299,21 +300,13 @@ function createMainWindow() {
       template.push({ type: "separator" });
     }
 
-    if (isEditable) {
-      template.push(
-        { label: "Cut", role: "cut", enabled: editFlags.canCut },
-        { label: "Copy", role: "copy", enabled: editFlags.canCopy },
-        { label: "Paste", role: "paste", enabled: editFlags.canPaste },
-        { type: "separator" },
-        { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll }
-      );
-    } else {
-      template.push(
-        { label: "Copy", role: "copy", enabled: editFlags.canCopy },
-        { type: "separator" },
-        { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll }
-      );
-    }
+    template.push(
+      { label: "Cut", role: "cut", enabled: editFlags.canCut },
+      { label: "Copy", role: "copy", enabled: editFlags.canCopy },
+      { label: "Paste", role: "paste", enabled: editFlags.canPaste },
+      { type: "separator" },
+      { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll }
+    );
 
     Menu.buildFromTemplate(template).popup({ window: mainWindow });
   });

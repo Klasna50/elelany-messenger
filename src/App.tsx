@@ -977,8 +977,10 @@ const PASTE_DROP_TAGS = new Set([
   "SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META", "SVG", "MATH",
   "NOSCRIPT", "TEMPLATE", "FORM", "INPUT", "BUTTON", "TEXTAREA", "SELECT",
 ]);
+// Note: background/background-color are intentionally NOT allowed — copying a
+// message would otherwise drag the bubble's background colour into the composer.
 const PASTE_ALLOWED_STYLE_PROPS = new Set([
-  "color", "background", "background-color", "font-weight", "font-style",
+  "color", "font-weight", "font-style",
   "text-decoration", "text-decoration-line", "text-decoration-style",
   "font-size", "line-height",
 ]);
@@ -2041,11 +2043,13 @@ function MessageBubble({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [reactionCustomizeOpen, setReactionCustomizeOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const messageRootRef = useRef<HTMLDivElement | null>(null);
   const actionBarRef = useRef<HTMLDivElement | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!pickerOpen && !actionsOpen) return;
+    if (!pickerOpen && !actionsOpen && !contextMenu) return;
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null;
@@ -2053,10 +2057,12 @@ function MessageBubble({
       // including elsewhere on this same message — but not on its own triggers
       // or popups, so the toggle buttons keep working.
       if (target && actionBarRef.current?.contains(target)) return;
+      if (target && contextMenuRef.current?.contains(target)) return;
 
       setPickerOpen(false);
       setActionsOpen(false);
       setReactionCustomizeOpen(false);
+      setContextMenu(null);
     };
 
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -2064,6 +2070,7 @@ function MessageBubble({
         setPickerOpen(false);
         setActionsOpen(false);
         setReactionCustomizeOpen(false);
+        setContextMenu(null);
       }
     };
 
@@ -2074,7 +2081,46 @@ function MessageBubble({
       document.removeEventListener("mousedown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [pickerOpen, actionsOpen]);
+  }, [pickerOpen, actionsOpen, contextMenu]);
+
+  // Copy the message: rich HTML (so pasting into the composer keeps formatting
+  // and emojis) plus a plain-text fallback for other apps. The bubble's own
+  // background never travels — body_html carries only the message content.
+  const copyMessageToClipboard = async () => {
+    const source = message.body_html || textToHtml(message.body_text);
+    const text = htmlToText(source).trim() || message.body_text || "";
+    const html = renderTwemojiHtml(resolveBuiltinStickerSrc(source));
+    try {
+      if (navigator.clipboard && typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([text], { type: "text/plain" }),
+            "text/html": new Blob([html], { type: "text/html" }),
+          }),
+        ]);
+        return;
+      }
+      await navigator.clipboard?.writeText(text);
+    } catch {
+      try {
+        await navigator.clipboard?.writeText(text);
+      } catch {
+        /* clipboard unavailable */
+      }
+    }
+  };
+
+  const openContextMenu = (event: React.MouseEvent) => {
+    if (localPending) return;
+    event.preventDefault();
+    setPickerOpen(false);
+    setActionsOpen(false);
+    const menuWidth = 180;
+    const menuHeight = 268;
+    const x = Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth));
+    const y = Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight));
+    setContextMenu({ x, y });
+  };
 
   const mine = message.sender_id === currentUserId;
   const senderName = message.profiles?.display_name || "User";
@@ -2123,7 +2169,7 @@ function MessageBubble({
         </div>
       ) : null}
 
-      <div className={`flex max-w-[80%] flex-col ${mine ? "items-end" : "items-start"}`}>
+      <div className={`flex max-w-[80%] flex-col ${mine ? "items-end" : "items-start"}`} onContextMenu={openContextMenu}>
         {!mine ? <div className="mb-1 pl-3 text-[13px] font-semibold text-slate-500">{senderName}</div> : null}
 
         {isAnimatedEmojiOnlyMessage ? (
@@ -2406,6 +2452,18 @@ function MessageBubble({
                     <span>Forward</span>
                     <span>↪</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      setPickerOpen(false);
+                      void copyMessageToClipboard();
+                    }}
+                    className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-[14px] font-medium text-slate-700 transition hover:bg-emerald-50"
+                  >
+                    <span>Copy</span>
+                    <span>⧉</span>
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -2417,6 +2475,68 @@ function MessageBubble({
       {mine ? (
         <div className="mt-0.5 shrink-0">
           <AvatarCircle imageUrl={senderAvatarUrl} label={senderName} size="sm" online={senderOnline} showPresence />
+        </div>
+      ) : null}
+
+      {contextMenu ? (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[168px] overflow-hidden rounded-[14px] border border-emerald-100 bg-white py-1 text-[14px] font-medium text-slate-700 shadow-2xl"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            type="button"
+            onClick={() => { setContextMenu(null); onAnswer(message); }}
+            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+          >
+            <span>Answer</span>
+            <span>↩</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setContextMenu(null); onQuote(message); }}
+            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+          >
+            <span>Quote</span>
+            <span>❝</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setContextMenu(null); onForward(message); }}
+            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+          >
+            <span>Forward</span>
+            <span>↪</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setContextMenu(null); void copyMessageToClipboard(); }}
+            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+          >
+            <span>Copy</span>
+            <span>⧉</span>
+          </button>
+          {editable ? (
+            <button
+              type="button"
+              onClick={() => { setContextMenu(null); onStartEdit(message); }}
+              className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+            >
+              <span>Edit</span>
+              <span>✎</span>
+            </button>
+          ) : null}
+          {deletable ? (
+            <button
+              type="button"
+              onClick={() => { setContextMenu(null); onDelete(message); }}
+              className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-rose-500 transition hover:bg-rose-50"
+            >
+              <span>Delete</span>
+              <span>🗑</span>
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
