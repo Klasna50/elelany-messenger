@@ -2043,7 +2043,7 @@ function MessageBubble({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [reactionCustomizeOpen, setReactionCustomizeOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selection: { html: string; text: string } | null } | null>(null);
   const messageRootRef = useRef<HTMLDivElement | null>(null);
   const actionBarRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2083,13 +2083,9 @@ function MessageBubble({
     };
   }, [pickerOpen, actionsOpen, contextMenu]);
 
-  // Copy the message: rich HTML (so pasting into the composer keeps formatting
-  // and emojis) plus a plain-text fallback for other apps. The bubble's own
-  // background never travels — body_html carries only the message content.
-  const copyMessageToClipboard = async () => {
-    const source = message.body_html || textToHtml(message.body_text);
-    const text = htmlToText(source).trim() || message.body_text || "";
-    const html = renderTwemojiHtml(resolveBuiltinStickerSrc(source));
+  // Write both rich HTML (so pasting into the composer keeps formatting and
+  // emojis) and a plain-text fallback for other apps.
+  const writeToClipboard = async (html: string, text: string) => {
     try {
       if (navigator.clipboard && typeof ClipboardItem !== "undefined") {
         await navigator.clipboard.write([
@@ -2110,16 +2106,45 @@ function MessageBubble({
     }
   };
 
+  // Copy the whole message. The bubble's own background never travels —
+  // body_html carries only the message content (the background is CSS).
+  const copyMessageToClipboard = () => {
+    const source = message.body_html || textToHtml(message.body_text);
+    const text = htmlToText(source).trim() || message.body_text || "";
+    const html = renderTwemojiHtml(resolveBuiltinStickerSrc(source));
+    return writeToClipboard(html, text);
+  };
+
   const openContextMenu = (event: React.MouseEvent) => {
     if (localPending) return;
     event.preventDefault();
     setPickerOpen(false);
     setActionsOpen(false);
+
+    // If part of THIS message is selected, capture that selection now — clicking
+    // the menu afterwards would clear it. cloneContents copies only the selected
+    // inner nodes, so the bubble background (on an ancestor) is never included.
+    let selection: { html: string; text: string } | null = null;
+    const domSelection = window.getSelection();
+    if (domSelection && !domSelection.isCollapsed && domSelection.rangeCount > 0) {
+      const range = domSelection.getRangeAt(0);
+      const text = domSelection.toString();
+      if (
+        text.trim().length > 0 &&
+        messageRootRef.current &&
+        messageRootRef.current.contains(range.commonAncestorContainer)
+      ) {
+        const holder = document.createElement("div");
+        holder.appendChild(range.cloneContents());
+        selection = { html: holder.innerHTML, text };
+      }
+    }
+
     const menuWidth = 180;
-    const menuHeight = 268;
+    const menuHeight = selection ? 56 : 268;
     const x = Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth));
     const y = Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight));
-    setContextMenu({ x, y });
+    setContextMenu({ x, y, selection });
   };
 
   const mine = message.sender_id === currentUserId;
@@ -2461,7 +2486,7 @@ function MessageBubble({
                     }}
                     className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-[14px] font-medium text-slate-700 transition hover:bg-emerald-50"
                   >
-                    <span>Copy</span>
+                    <span>Copy Message</span>
                     <span>⧉</span>
                   </button>
                 </div>
@@ -2485,58 +2510,77 @@ function MessageBubble({
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onContextMenu={(event) => event.preventDefault()}
         >
-          <button
-            type="button"
-            onClick={() => { setContextMenu(null); onAnswer(message); }}
-            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
-          >
-            <span>Answer</span>
-            <span>↩</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setContextMenu(null); onQuote(message); }}
-            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
-          >
-            <span>Quote</span>
-            <span>❝</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setContextMenu(null); onForward(message); }}
-            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
-          >
-            <span>Forward</span>
-            <span>↪</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setContextMenu(null); void copyMessageToClipboard(); }}
-            className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
-          >
-            <span>Copy</span>
-            <span>⧉</span>
-          </button>
-          {editable ? (
+          {contextMenu.selection ? (
+            // A part of the message is selected: offer only "Copy", and copy
+            // exactly what was selected.
             <button
               type="button"
-              onClick={() => { setContextMenu(null); onStartEdit(message); }}
+              onClick={() => {
+                const picked = contextMenu.selection;
+                setContextMenu(null);
+                if (picked) void writeToClipboard(picked.html, picked.text);
+              }}
               className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
             >
-              <span>Edit</span>
-              <span>✎</span>
+              <span>Copy</span>
+              <span>⧉</span>
             </button>
-          ) : null}
-          {deletable ? (
-            <button
-              type="button"
-              onClick={() => { setContextMenu(null); onDelete(message); }}
-              className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-rose-500 transition hover:bg-rose-50"
-            >
-              <span>Delete</span>
-              <span>🗑</span>
-            </button>
-          ) : null}
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => { setContextMenu(null); onAnswer(message); }}
+                className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+              >
+                <span>Answer</span>
+                <span>↩</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setContextMenu(null); onQuote(message); }}
+                className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+              >
+                <span>Quote</span>
+                <span>❝</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setContextMenu(null); onForward(message); }}
+                className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+              >
+                <span>Forward</span>
+                <span>↪</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setContextMenu(null); void copyMessageToClipboard(); }}
+                className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+              >
+                <span>Copy Message</span>
+                <span>⧉</span>
+              </button>
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={() => { setContextMenu(null); onStartEdit(message); }}
+                  className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition hover:bg-emerald-50"
+                >
+                  <span>Edit</span>
+                  <span>✎</span>
+                </button>
+              ) : null}
+              {deletable ? (
+                <button
+                  type="button"
+                  onClick={() => { setContextMenu(null); onDelete(message); }}
+                  className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-rose-500 transition hover:bg-rose-50"
+                >
+                  <span>Delete</span>
+                  <span>🗑</span>
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
     </div>
