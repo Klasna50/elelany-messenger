@@ -10329,7 +10329,10 @@ export default function App() {
                                   >{unreadCount}</span>
                                 ) : null}
                               </div>
-                              <div className={`active-chat-preview text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}>
+                              <div
+                                className={`active-chat-preview flex items-center overflow-hidden text-[15px] ${active ? "font-semibold text-slate-700" : unread ? "font-semibold text-slate-800" : "font-normal text-slate-500"}`}
+                                style={{ height: "2.8em" }}
+                              >
                                 {lastAnimatedEmojiPreview ? (
                                     <span className="inline-flex items-center gap-2">
                                       {muted ? <span>Muted •</span> : null}
