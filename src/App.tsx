@@ -965,25 +965,6 @@ function cleanComposerHtml(html: string): string {
     .replace(/<\/font>/gi, "</span>");
 }
 
-// Remove empty line-break markup that sits at the very start or end of composer
-// HTML (leading/trailing <br>, empty <div>/<p> lines, stray whitespace/&nbsp;).
-// Chromium's contentEditable often won't let you backspace away a trailing/
-// leading break, so we strip those edges when loading a message for editing and
-// again on send \u2014 the message then keeps only the line breaks between content.
-function stripEdgeLineBreaks(html: string): string {
-  const edge =
-    "(?:\\s|&nbsp;|<br\\s*/?>|<div>\\s*(?:<br\\s*/?>)?\\s*</div>|<p>\\s*(?:<br\\s*/?>)?\\s*</p>)";
-  const leadRe = new RegExp(`^(?:${edge})+`, "i");
-  const trailRe = new RegExp(`(?:${edge})+$`, "i");
-  let out = html;
-  let prev: string;
-  do {
-    prev = out;
-    out = out.replace(leadRe, "").replace(trailRe, "");
-  } while (out !== prev);
-  return out;
-}
-
 // Pasting rich content (a copied message, formatted text) should keep bold /
 // italic / underline / colors / line breaks / emojis, but the result is stored
 // and rendered as HTML on every client, so it must be sanitised to a safe
@@ -7663,7 +7644,7 @@ export default function App() {
     const messageBodyHtml = hasContent
       ? isPlainEmojiOnlyComposerMessage
         ? buildPlainEmojiHtml(text)
-        : stripEdgeLineBreaks(rawHtml)
+        : rawHtml
       : "";
     const finalHtml = composerContext
       ? `${buildContextBannerHtml(composerContext)}${messageBodyHtml}`
@@ -7841,7 +7822,7 @@ export default function App() {
     setShowEmojiPicker(false);
     setShowStickerPicker(false);
     setStickerManagerOpen(false);
-    setEditorContent(stripEdgeLineBreaks(message.body_html || textToHtml(message.body_text)));
+    setEditorContent(message.body_html || textToHtml(message.body_text));
 
     window.setTimeout(() => {
       editorRef.current?.focus();
