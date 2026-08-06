@@ -194,7 +194,9 @@ const RICH_TEXT_TOOLBAR_MODE_OPTIONS: Array<{ id: RichTextToolbarMode; label: st
 // anyone who never opens this setting.
 type UnreadBadgeColor = "default" | "red" | "black" | "green";
 const UNREAD_BADGE_COLOR_VALUES: Record<UnreadBadgeColor, string> = {
-  default: "#1e293b",
+  // Follows the user's chosen accent theme (the badge sits inside the themed
+  // root, so this CSS var resolves to whatever theme color is selected).
+  default: "var(--accent-500, #1e293b)",
   red: "#ef4444",
   black: "#0f172a",
   green: "#16a34a",
@@ -10304,12 +10306,10 @@ export default function App() {
                       return (
                         <div key={item.conversation.id} className="group/chat relative">
                           <button
-                            className={`relative flex w-full items-center gap-3 rounded-2xl border px-3 py-3 pr-11 text-left transition ${
+                            className={`relative flex w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-3 pr-11 text-left shadow-sm transition ${
                               active
-                                ? "active-chat-row border-transparent bg-emerald-50/90"
-                                : unread
-                                  ? "border-slate-200 bg-white shadow-sm hover:border-emerald-100 hover:bg-white"
-                                  : "border-transparent bg-white/70 hover:border-slate-200 hover:bg-white"
+                                ? "active-chat-row"
+                                : "bg-white hover:bg-slate-50"
                             }`}
                             onClick={() => {
                               setChatActionMenuId(null);
