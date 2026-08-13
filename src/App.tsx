@@ -2805,6 +2805,11 @@ export default function App() {
   // the (cached) messages instead of popping in a moment later and shifting the
   // layout. Kept fresh by a background fetchReactions after each open.
   const reactionsCacheRef = useRef<Record<string, ReactionRow[]>>({});
+  // Ids deleted in this session. mergeMessages() unions old + new, so without
+  // this a deleted message can be re-added by any later merge — a realtime echo,
+  // a background profile hydrate or a refetch that still carries the old row —
+  // and would stay on screen until a reload. Filtered out on every render pass.
+  const deletedMessageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversation?.id || null;
@@ -3523,6 +3528,8 @@ export default function App() {
 
     messageCacheRef.current = {};
     localOutgoingMessagesRef.current = {};
+    reactionsCacheRef.current = {};
+    deletedMessageIdsRef.current = new Set();
     loadedConversationIdsRef.current = new Set();
     messageScrollPositionsRef.current = {};
     messageRefs.current = {};
@@ -4672,7 +4679,17 @@ export default function App() {
       return !sourceIds.has(messageId) && (!localClientId || !sourceClientIds.has(localClientId));
     });
 
-    return mergeMessages(sourceMessages, remainingPending);
+    const merged = mergeMessages(sourceMessages, remainingPending);
+
+    // A message deleted in this session must never come back through a merge.
+    if (deletedMessageIdsRef.current.size === 0) return merged;
+    return merged.filter((message) => {
+      const localClientId = String((message as MessageRow & { local_client_id?: string }).local_client_id || "");
+      return (
+        !deletedMessageIdsRef.current.has(String(message.id)) &&
+        (!localClientId || !deletedMessageIdsRef.current.has(localClientId))
+      );
+    });
   };
 
   const setConversationMessages = (
@@ -4700,13 +4717,41 @@ export default function App() {
   // realtime DELETE / broadcast handlers.
   const purgeMessageLocally = (conversationId: string, messageId: string) => {
     const id = String(messageId);
-    const drop = (list: MessageRow[]) => list.filter((message) => String(message.id) !== id);
+
+    // Also match the optimistic copy of our own message, which carries the
+    // server id on local_client_id (or vice versa) once reconciled.
+    const localClientIdsForMessage = new Set<string>();
+    for (const list of [messageCacheRef.current[conversationId] || [], localOutgoingMessagesRef.current[conversationId] || []]) {
+      for (const message of list) {
+        const localClientId = String((message as MessageRow & { local_client_id?: string }).local_client_id || "");
+        if (localClientId && String(message.id) === id) localClientIdsForMessage.add(localClientId);
+      }
+    }
+
+    deletedMessageIdsRef.current.add(id);
+    for (const localClientId of localClientIdsForMessage) deletedMessageIdsRef.current.add(localClientId);
+
+    const isDeleted = (message: MessageRow) => {
+      const localClientId = String((message as MessageRow & { local_client_id?: string }).local_client_id || "");
+      return String(message.id) === id || (Boolean(localClientId) && localClientIdsForMessage.has(localClientId));
+    };
+    const drop = (list: MessageRow[]) => list.filter((message) => !isDeleted(message));
 
     messageCacheRef.current = {
       ...messageCacheRef.current,
       [conversationId]: drop(messageCacheRef.current[conversationId] || []),
     };
     setMessageCache((current) => ({ ...current, [conversationId]: drop(current[conversationId] || []) }));
+
+    // Drop any lingering optimistic copy too, or renderMessagesForConversation
+    // would re-inject it once the server row is gone from the source list.
+    const pendingForConversation = localOutgoingMessagesRef.current[conversationId];
+    if (pendingForConversation?.length) {
+      const nextPending = pendingForConversation.filter((message) => !isDeleted(message));
+      if (nextPending.length !== pendingForConversation.length) {
+        setLocalOutgoingMessages(conversationId, nextPending);
+      }
+    }
 
     if (activeConversationIdRef.current === conversationId) {
       setMessages((current) => drop(current));
