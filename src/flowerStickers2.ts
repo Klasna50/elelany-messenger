@@ -28,6 +28,16 @@ import f27 from "./assets/stickers/flower-27.png";
 import f28 from "./assets/stickers/flower-28.png";
 import f29 from "./assets/stickers/flower-29.png";
 import f30 from "./assets/stickers/flower-30.png";
+import f31 from "./assets/stickers/flower-31.png";
+import f32 from "./assets/stickers/flower-32.png";
+import f33 from "./assets/stickers/flower-33.png";
+import f34 from "./assets/stickers/flower-34.png";
+import f35 from "./assets/stickers/flower-35.png";
+import f36 from "./assets/stickers/flower-36.png";
+import f37 from "./assets/stickers/flower-37.png";
+import f38 from "./assets/stickers/flower-38.png";
+import f39 from "./assets/stickers/flower-39.png";
+import f40 from "./assets/stickers/flower-40.png";
 
 export const FLOWER_STICKERS_2: FlowerSticker[] = [
   { id: "flower-05", label: "Blush Bud Sprig", accent: "#d9b8c4", bg: "transparent", src: f05 },
@@ -56,4 +66,14 @@ export const FLOWER_STICKERS_2: FlowerSticker[] = [
   { id: "flower-28", label: "Ivory Blossom Spray", accent: "#d9c7a0", bg: "transparent", src: f28 },
   { id: "flower-29", label: "Blush Peony", accent: "#e0a3ba", bg: "transparent", src: f29 },
   { id: "flower-30", label: "Rosy Peony Cluster", accent: "#d68ca6", bg: "transparent", src: f30 },
+  { id: "flower-31", label: "Dusty Blue Bouquet", accent: "#8fa8c8", bg: "transparent", src: f31 },
+  { id: "flower-32", label: "Cherry Blossom Branch", accent: "#e894b4", bg: "transparent", src: f32 },
+  { id: "flower-33", label: "Peach Blossom Trio", accent: "#e8b598", bg: "transparent", src: f33 },
+  { id: "flower-34", label: "Ivory Peach Roses", accent: "#eda87f", bg: "transparent", src: f34 },
+  { id: "flower-35", label: "Pink Eucalyptus Posy", accent: "#dd8fae", bg: "transparent", src: f35 },
+  { id: "flower-36", label: "Butter Cream Poppies", accent: "#e3c67a", bg: "transparent", src: f36 },
+  { id: "flower-37", label: "White Camellia Cluster", accent: "#ded2bc", bg: "transparent", src: f37 },
+  { id: "flower-38", label: "Rose Peony Pair", accent: "#e2799d", bg: "transparent", src: f38 },
+  { id: "flower-39", label: "Magenta Camellias", accent: "#c65c93", bg: "transparent", src: f39 },
+  { id: "flower-40", label: "Mauve Ranunculus Posy", accent: "#b98bbf", bg: "transparent", src: f40 },
 ];
