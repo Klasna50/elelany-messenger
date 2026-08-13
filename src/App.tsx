@@ -2200,7 +2200,7 @@ function MessageBubble({
         {isAnimatedEmojiOnlyMessage ? (
           <div className={`animated-emoji-message-content mx-5 max-w-[320px] bg-transparent py-5 px-0 shadow-none ${highlighted ? "activity-message-highlight rounded-3xl" : ""}`}>
             <div
-              className="message-copy break-words whitespace-pre-wrap text-[42px] leading-none [&_[data-animated-emoji]]:inline-block [&_[data-animated-emoji]]:origin-center [&_[data-animated-emoji]]:scale-[2] [&_[data-animated-emoji]]:bg-transparent [&_[data-animated-emoji]]:p-0 [&_[data-animated-emoji]]:shadow-none [&_[data-animated-emoji]]:mx-[22px] [&_[data-animated-emoji]]:my-[28px] [&_img[data-animated-emoji]]:h-[42px] [&_img[data-animated-emoji]]:w-[42px] [&_img[data-animated-emoji]]:object-contain"
+              className="message-copy break-words whitespace-pre-wrap text-[50px] leading-none [&_[data-animated-emoji]]:inline-block [&_[data-animated-emoji]]:origin-center [&_[data-animated-emoji]]:scale-[2] [&_[data-animated-emoji]]:bg-transparent [&_[data-animated-emoji]]:p-0 [&_[data-animated-emoji]]:shadow-none [&_[data-animated-emoji]]:mx-[26px] [&_[data-animated-emoji]]:my-[34px] [&_img[data-animated-emoji]]:h-[50px] [&_img[data-animated-emoji]]:w-[50px] [&_img[data-animated-emoji]]:object-contain"
               dangerouslySetInnerHTML={{ __html: messageHtml }}
             />
           </div>
@@ -2801,6 +2801,10 @@ export default function App() {
   const messageLoadRequestIdRef = useRef(0);
   const localOutgoingMessagesRef = useRef<Record<string, LocalPendingMessage[]>>({});
   const messageCacheRef = useRef<Record<string, MessageRow[]>>({});
+  // Reactions per conversation, so re-opening a chat can show them together with
+  // the (cached) messages instead of popping in a moment later and shifting the
+  // layout. Kept fresh by a background fetchReactions after each open.
+  const reactionsCacheRef = useRef<Record<string, ReactionRow[]>>({});
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversation?.id || null;
@@ -5104,7 +5108,13 @@ export default function App() {
       } as ReactionRow);
     });
 
-    setReactions(Array.from(deduped.values()));
+    const list = Array.from(deduped.values());
+    if (conversationId) reactionsCacheRef.current[conversationId] = list;
+    // Don't let a late fetch for a conversation the user already left overwrite
+    // the reactions of the one they're now looking at.
+    if (!conversationId || activeConversationIdRef.current === conversationId) {
+      setReactions(list);
+    }
   };
 
   // Renders a reaction change straight from the realtime payload, with no round trip,
@@ -5266,12 +5276,16 @@ export default function App() {
 
     if (skipLoadBecauseOpenedManually) {
       setMessageFlowLoading(false);
+      setReactions(reactionsCacheRef.current[activeConversation.id] || []);
       fetchReactions(activeConversation.id);
     } else if (shouldUseCache) {
       setMessageFlowLoading(false);
       const separatorId = getUnreadSeparatorMessageId(cachedMessages, unreadCountAtOpen);
       setUnreadSeparatorMessageId(separatorId);
       if (cachedSeen) setSeenSummaries(cachedSeen);
+      // Show cached reactions in the same render as the cached messages so they
+      // don't pop in afterwards and jump the layout; the fetch below refreshes.
+      setReactions(reactionsCacheRef.current[activeConversation.id] || []);
       setMessages(renderMessagesForConversation(activeConversation.id, cachedMessages));
 
       if (unreadCountAtOpen > 0 && separatorId) {
@@ -5295,6 +5309,9 @@ export default function App() {
         const conversationId = activeConversation.id;
         const loaded = await fetchMessages(conversationId);
         const nextSeen = await fetchSeenSummaries(conversationId);
+        // Fetch reactions before revealing the flow so they render with the
+        // messages in one pass — no late pop-in, no layout jump.
+        await fetchReactions(conversationId);
         const separatorId = getUnreadSeparatorMessageId(loaded, unreadCountAtOpen);
 
         if (messageLoadRequestIdRef.current === requestId && activeConversationIdRef.current === conversationId) {
@@ -5307,7 +5324,6 @@ export default function App() {
       };
 
       loadActiveConversationFlow();
-      fetchReactions(activeConversation.id);
     }
 
     const channel = supabase
@@ -6380,6 +6396,7 @@ export default function App() {
     const cachedMessages = messageCache[conversation.id] || [];
     setMessages(cachedMessages.length ? visibleMessagesForConversation(conversation.id) : []);
     setMessageFlowLoading(!cachedMessages.length);
+    setReactions(reactionsCacheRef.current[conversation.id] || []);
     fetchReactions(conversation.id);
     const loadedMessages = cachedMessages.length ? cachedMessages : await fetchMessages(conversation.id);
     setUnreadSeparatorMessageId(null);
