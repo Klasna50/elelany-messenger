@@ -2889,15 +2889,20 @@ export default function App() {
       ? activeConversation.title || "Group chat"
       : activeOtherUser?.display_name || "Private chat"
     : "Select a chat";
+  // Typing is shown at the bottom-left of the message flow (see the sticky
+  // indicator there), not in this header line — so the header no longer flips
+  // between "Online" and "is typing...".
   const activeStatus = activeConversation
-    ? otherUserTyping
-      ? `${typingUserName || (activeIsGroup ? "Someone" : activeOtherUser?.display_name || "User")} is typing...`
-      : activeIsGroup
-        ? `${activeMembers.length || 1} members`
-        : isUserOnline(activeOtherUser?.id)
-          ? "Online"
-          : "Offline"
+    ? activeIsGroup
+      ? `${activeMembers.length || 1} members`
+      : isUserOnline(activeOtherUser?.id)
+        ? "Online"
+        : "Offline"
     : "Choose a user or group from the left";
+  const typingIndicatorLabel =
+    activeConversation && otherUserTyping
+      ? `${typingUserName || (activeIsGroup ? "Someone" : activeOtherUser?.display_name || "User")} is typing...`
+      : "";
   const activeAvatarUrl = activeIsGroup ? getConversationAvatarUrl(activeConversation) : getAvatarUrl(activeOtherUser);
 
   // Leave the current chat and go back to the empty "pick a chat" state.
@@ -9166,6 +9171,22 @@ export default function App() {
           pointer-events: none;
         }
 
+        .elelany-typing-dots i {
+          width: 5px;
+          height: 5px;
+          border-radius: 9999px;
+          background: var(--accent-400, #94a3b8);
+          display: inline-block;
+          animation: elelanyTypingDot 1.1s ease-in-out infinite;
+        }
+        .elelany-typing-dots i:nth-child(2) { animation-delay: 0.16s; }
+        .elelany-typing-dots i:nth-child(3) { animation-delay: 0.32s; }
+
+        @keyframes elelanyTypingDot {
+          0%, 70%, 100% { opacity: 0.32; transform: translateY(0); }
+          35% { opacity: 1; transform: translateY(-2px); }
+        }
+
         .elelany-lato .message-copy {
           font-size: 18px;
           line-height: 30px;
@@ -10177,31 +10198,33 @@ export default function App() {
               />
             </div>
 
-            <button
-              type="button"
-              className="mt-2 flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
-              onClick={() => {
-                setNewChatOpen((value) => !value);
-                setInviteStatus("");
-                setGroupComposerOpen(false);
-                setGroupStatus("");
-              }}
-            >
-              <span>{newChatOpen ? "Close" : "Add contact"}</span>
-              <span className="text-[18px] leading-none">{newChatOpen ? "✕" : "+"}</span>
-            </button>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
+                onClick={() => {
+                  setNewChatOpen((value) => !value);
+                  setInviteStatus("");
+                  setGroupComposerOpen(false);
+                  setGroupStatus("");
+                }}
+              >
+                <span className="truncate">{newChatOpen ? "Close" : "Add contact"}</span>
+                <span className="shrink-0 text-[18px] leading-none">{newChatOpen ? "✕" : "+"}</span>
+              </button>
 
-            <button
-              type="button"
-              className="mt-2 flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
-              onClick={() => {
-                setGroupComposerOpen((value) => !value);
-                setGroupStatus("");
-              }}
-            >
-              <span>{groupComposerOpen ? "Close group creator" : "Create group"}</span>
-              <span className="text-[18px] leading-none">{groupComposerOpen ? "✕" : "+"}</span>
-            </button>
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
+                onClick={() => {
+                  setGroupComposerOpen((value) => !value);
+                  setGroupStatus("");
+                }}
+              >
+                <span className="truncate">{groupComposerOpen ? "Close" : "Create group"}</span>
+                <span className="shrink-0 text-[18px] leading-none">{groupComposerOpen ? "✕" : "+"}</span>
+              </button>
+            </div>
 
             {groupComposerOpen ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
@@ -10511,7 +10534,15 @@ export default function App() {
                       const lastStickerPreview = getStickerPreviewData(item.lastMessage?.body_html || "");
 
                       return (
-                        <div key={item.conversation.id} className="group/chat relative">
+                        <div
+                          key={item.conversation.id}
+                          className="group/chat relative"
+                          onContextMenu={(event) => {
+                            // Right-clicking a chat opens the same menu as the "⋯" button.
+                            event.preventDefault();
+                            setChatActionMenuId(item.conversation.id);
+                          }}
+                        >
                           <button
                             className={`relative flex w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-3 pr-11 text-left shadow-sm transition ${
                               active
@@ -10578,7 +10609,13 @@ export default function App() {
 
                           <button
                             type="button"
-                            className={`absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[18px] font-bold text-slate-400 transition hover:bg-white hover:text-slate-700 ${chatActionMenuId === item.conversation.id ? "opacity-100" : "opacity-0 group-hover/chat:opacity-100"}`}
+                            /* On the active chat the row is theme-coloured, so a gray
+                               "⋯" barely shows — use white there instead. */
+                            className={`absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[18px] font-bold transition ${
+                              active
+                                ? "text-white hover:bg-white/25 hover:text-white"
+                                : "text-slate-400 hover:bg-white hover:text-slate-700"
+                            } ${chatActionMenuId === item.conversation.id ? "opacity-100" : "opacity-0 group-hover/chat:opacity-100"}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               setChatActionMenuId((current) => current === item.conversation.id ? null : item.conversation.id);
@@ -11398,6 +11435,23 @@ export default function App() {
               )}
 
               <div ref={messagesEndRef} className="h-3 shrink-0" aria-hidden="true" />
+            </div>
+
+            {/* Typing indicator, pinned to the bottom-left of the message flow.
+                The sticky wrapper is zero-height and the label is absolutely
+                positioned inside it, so showing or hiding it can never change
+                the layout or scroll position — no jump, no flicker. */}
+            <div className="pointer-events-none sticky bottom-0 z-20 h-0" aria-live="polite">
+              <div
+                className={`absolute bottom-1 left-0 transition-opacity duration-200 ${typingIndicatorLabel ? "opacity-100" : "opacity-0"}`}
+              >
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-100 bg-white/95 px-3 py-1.5 text-[13px] font-medium text-slate-500 shadow-sm backdrop-blur">
+                  <span className="elelany-typing-dots inline-flex items-center gap-1" aria-hidden="true">
+                    <i /><i /><i />
+                  </span>
+                  {typingIndicatorLabel || " "}
+                </span>
+              </div>
             </div>
           </div>
 
