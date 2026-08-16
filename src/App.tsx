@@ -1077,6 +1077,14 @@ function sanitizePastedHtml(html: string): string {
         if (!isSafePastedImgSrc(element.getAttribute("src") || "")) {
           element.removeAttribute("src");
         }
+        // Sanitising drops layout styles, which would leave an animated emoji or
+        // sticker at its natural (huge) size. Restore their canonical sizing so a
+        // pasted one matches what the picker inserts.
+        if (element.hasAttribute("data-animated-emoji")) {
+          element.setAttribute("style", ANIMATED_EMOJI_INLINE_STYLE);
+        } else if (element.hasAttribute("data-sticker")) {
+          element.setAttribute("style", STICKER_INLINE_STYLE);
+        }
         continue;
       }
 
@@ -1207,7 +1215,7 @@ function buildStickerHtml(sticker: AnySticker): string {
   const safe = normalizeSticker(sticker);
 
   if (safe.src) {
-    return `<img data-sticker="${safe.id}" src="${safe.src}" alt="${escapeHtml(safe.label)}" width="220" height="220" style="display:block;width:220px;height:220px;max-width:220px;max-height:220px;object-fit:contain;background:transparent;border:0;box-shadow:none;padding:0;margin:0;" />`;
+    return `<img data-sticker="${safe.id}" src="${safe.src}" alt="${escapeHtml(safe.label)}" width="220" height="220" style="${STICKER_INLINE_STYLE}" />`;
   }
 
   return `<div data-sticker="${safe.id}" style="display:block;font-size:86px;line-height:1;background:transparent;border:0;box-shadow:none;padding:0;margin:0;">${safe.emoji || "✨"}</div>`;
@@ -1242,10 +1250,18 @@ function resolveBuiltinStickerSrc(html: string): string {
 }
 
 
+// Canonical inline sizing for an animated emoji / sticker. Kept as constants so
+// a paste can restore them: the paste sanitiser drops layout styles, which would
+// otherwise leave the image at its natural (huge) size.
+const ANIMATED_EMOJI_INLINE_STYLE =
+  "display:inline-block;width:34px;height:34px;vertical-align:middle;object-fit:contain;margin:0 2px;";
+const STICKER_INLINE_STYLE =
+  "display:block;width:220px;height:220px;max-width:220px;max-height:220px;object-fit:contain;background:transparent;border:0;box-shadow:none;padding:0;margin:0;";
+
 function buildAnimatedEmojiHtml(item: AnimatedEmojiItem): string {
   const src = `${ANIMATED_EMOJI_BASE_URL}/${encodeURIComponent(item.filename)}`;
   const label = escapeHtml(item.emoji || item.label || item.id);
-  return `<img data-animated-emoji="${escapeHtml(item.id)}" src="${src}" alt="${label}" style="display:inline-block;width:34px;height:34px;vertical-align:middle;object-fit:contain;margin:0 2px;" />`;
+  return `<img data-animated-emoji="${escapeHtml(item.id)}" src="${src}" alt="${label}" style="${ANIMATED_EMOJI_INLINE_STYLE}" />`;
 }
 
 
@@ -1320,10 +1336,6 @@ function isAnimatedEmojiOnlyHtml(html: string): boolean {
     .replace(/\s+/g, "")
     .trim();
   return /data-animated-emoji=/i.test(html) && !stripped;
-}
-
-function countAnimatedEmojisInHtml(html: string): number {
-  return (html.match(/data-animated-emoji=/gi) || []).length;
 }
 
 function isPlainEmojiOnlyText(value: string): boolean {
@@ -2394,35 +2406,6 @@ function MessageBubble({
                 </div>
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setPickerOpen(false);
-                  setActionsOpen((value) => !value);
-                }}
-                className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-full text-[17px] font-bold leading-none transition hover:bg-emerald-50 hover:text-slate-700"
-                aria-label="More message actions"
-                title="More"
-              >
-                ⋯
-              </button>
-
-              {deletable ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActionsOpen(false);
-                    setPickerOpen(false);
-                    onDelete(message);
-                  }}
-                  className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-full text-[14px] text-rose-300 transition hover:bg-rose-50 hover:text-rose-500"
-                  aria-label="Delete message"
-                  title="Delete message"
-                >
-                  <MessageTrashMiniIcon />
-                </button>
-              ) : null}
-
               {editable ? (
                 <button
                   type="button"
@@ -2438,6 +2421,19 @@ function MessageBubble({
                   <MessageEditMiniIcon />
                 </button>
               ) : null}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPickerOpen(false);
+                  setActionsOpen((value) => !value);
+                }}
+                className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-full text-[17px] font-bold leading-none transition hover:bg-emerald-50 hover:text-slate-700"
+                aria-label="More message actions"
+                title="More"
+              >
+                ⋯
+              </button>
 
               {actionsOpen ? (
                 <div className={`absolute bottom-full z-30 mb-2 min-w-[156px] overflow-hidden rounded-[18px] border border-emerald-100 bg-white shadow-xl ${mine ? "right-0" : "left-0"}`}>
@@ -2489,6 +2485,20 @@ function MessageBubble({
                     <span>Copy Message</span>
                     <span>⧉</span>
                   </button>
+                  {deletable ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        setPickerOpen(false);
+                        onDelete(message);
+                      }}
+                      className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-[14px] font-medium text-rose-500 transition hover:bg-rose-50"
+                    >
+                      <span>Delete</span>
+                      <span className="inline-flex items-center"><MessageTrashMiniIcon /></span>
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -7880,13 +7890,6 @@ export default function App() {
     const finalHtml = composerContext
       ? `${buildContextBannerHtml(composerContext)}${messageBodyHtml}`
       : messageBodyHtml;
-    const animatedEmojiCount = countAnimatedEmojisInHtml(rawHtml);
-
-    if (animatedEmojiCount > 1) {
-      setMessageActionStatus("Only one animated emoji can be sent at a time.");
-      return;
-    }
-
     const fallbackText = composerContext
       ? `${composerContext.kind === "answer" ? "Answer" : "Quote"}: ${composerContext.senderName}\n${shortenText(composerContext.previewText, 180)}${text ? `\n\n${text}` : ""}`
       : rawHtml.includes("data-animated-emoji=")
@@ -8312,20 +8315,13 @@ export default function App() {
   };
 
   const insertAnimatedEmoji = (item: AnimatedEmojiItem) => {
-    const currentHtml = editorRef.current?.innerHTML || composerHtml;
-
-    if (countAnimatedEmojisInHtml(currentHtml) >= 1) {
-      setMessageActionStatus("Only one animated emoji can be sent at a time.");
-      setShowAnimatedEmojiPicker(false);
-      return;
-    }
-
+    // Several animated emojis can go in one message, so the picker stays open
+    // to let you keep adding them.
     insertHtmlIntoEditor(buildAnimatedEmojiHtml(item));
     registerAnimatedEmojiRecent(item.id);
     setMessageActionStatus("");
     setShowStickerPicker(false);
     setShowEmojiPicker(false);
-    setShowAnimatedEmojiPicker(false);
   };
 
   const startComposerContext = (kind: "answer" | "quote", message: MessageRow) => {
@@ -11482,7 +11478,7 @@ export default function App() {
             {editingMessage ? (
               <div className="composer-action-banner mb-3 flex items-center justify-between rounded-2xl border px-3 py-2 text-[15px]">
                 <span>
-                  Editing message.
+                  Editing message:
                 </span>
                 <button
                   type="button"
