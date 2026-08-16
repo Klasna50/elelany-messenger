@@ -33,9 +33,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,woff2,png,svg,ico}"],
-        // The flower stickers are several MB; don't precache them on install.
-        // They load on demand and are then cached at runtime (rule below).
-        globIgnores: ["**/flower-*.png"],
+        // The flower stickers are several MB, and the animated settings koala is
+        // only needed on hover; don't precache them on install. They load on
+        // demand and are then cached at runtime (rules below).
+        globIgnores: ["**/flower-*.png", "**/koala-animated-*.png"],
         navigateFallback: "/index.html",
         cleanupOutdatedCaches: true,
         // The precache is the app shell only. Never let the SW serve cached
@@ -51,6 +52,16 @@ export default defineConfig({
             options: {
               cacheName: "elelany-stickers",
               expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 90 },
+            },
+          },
+          {
+            // Animated settings koala: fetched the first time it's hovered,
+            // then served from cache.
+            urlPattern: /\/assets\/koala-animated-[^/]+\.png$/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "elelany-ui",
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 90 },
             },
           },
         ],

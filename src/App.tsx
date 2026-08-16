@@ -5,6 +5,10 @@ import type { ContactRequestRow, Conversation, MessageRow, Profile, ReactionRow 
 import { ANIMATED_EMOJI_META } from "./animatedEmojiMeta";
 import { FLOWER_STICKERS } from "./flowerStickers";
 import { FLOWER_STICKERS_2 } from "./flowerStickers2";
+// Settings button artwork: the still frame is shown grayscaled, and the
+// animated APNG (same koala) takes over on hover.
+import koalaStatic from "./assets/ui/koala-static.png";
+import koalaAnimated from "./assets/ui/koala-animated.png";
 
 type ChatListItem = {
   conversation: Conversation;
@@ -10721,18 +10725,33 @@ export default function App() {
             </div>
           </div>
 
-          <div ref={settingsPanelRef} className="relative border-t border-slate-200 bg-[#f4f4f4] p-4">
+          <div ref={settingsPanelRef} className="relative bg-[#f4f4f4] p-4">
             <button
               type="button"
-              className="flex h-14 w-14 items-center justify-center text-slate-600 transition hover:text-slate-900"
+              className="elelany-settings-koala group/koala flex h-14 w-14 items-center justify-center transition"
               onClick={() => setSettingsOpen((value) => !value)}
               title="Settings"
               aria-label="Settings"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
+              {/* Still frame, desaturated, until hover — then the animated koala
+                  in full colour takes over. Both are stacked so the animation is
+                  already loaded and the swap can't flicker. */}
+              <span className="relative block h-7 w-7">
+                <img
+                  src={koalaStatic}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  className="absolute inset-0 h-7 w-7 object-contain grayscale transition-opacity duration-150 group-hover/koala:opacity-0"
+                />
+                <img
+                  src={koalaAnimated}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  className="absolute inset-0 h-7 w-7 object-contain opacity-0 transition-opacity duration-150 group-hover/koala:opacity-100"
+                />
+              </span>
             </button>
 
             {settingsOpen ? (
