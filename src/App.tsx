@@ -2196,7 +2196,8 @@ function MessageBubble({
       data-message-id={message.id}
       className={`group my-2 flex flex-wrap items-start gap-2 ${mine ? "justify-end" : "justify-start"}`}
     >
-      <div className="w-full text-center text-[12px] leading-none text-slate-400">
+      {/* Soft pale olive, about half as intense as the old slate tone. */}
+      <div className="w-full text-center text-[12px] leading-none text-[#c3c7ac]">
         {formatDateTime(message.created_at)}
       </div>
 
@@ -2284,7 +2285,9 @@ function MessageBubble({
           <div className="min-h-[4px]" />
         )}
 
-        <div className={`mt-0.5 flex items-center gap-1.5 text-[12px] leading-none text-slate-400 ${mine ? "flex-row-reverse justify-end pr-3 text-right" : "justify-start pl-3 text-left"}`}>
+        {/* On sent messages the row is reversed and spread, so the hover action
+            bar sits at the left edge of the bubble while the ticks stay right. */}
+        <div className={`mt-0.5 flex items-center gap-1.5 text-[12px] leading-none text-slate-400 ${mine ? "w-full flex-row-reverse justify-between pr-3 text-right" : "justify-start pl-3 text-left"}`}>
           {mine ? (
             <>
               <span
@@ -2337,8 +2340,11 @@ function MessageBubble({
                 <EmojiModernIcon />
               </button>
 
+              {/* The reaction panel opens to the right of the bar on both sides:
+                  on sent messages the bar now sits at the bubble's left edge, so
+                  opening leftward would run off the message area. */}
               {pickerOpen ? (
-                <div className={`absolute top-1/2 z-30 w-[324px] -translate-y-1/2 rounded-[18px] border border-emerald-100 bg-white p-2 shadow-xl ${mine ? "right-full mr-2" : "left-full ml-2"}`}>
+                <div className="absolute left-full top-1/2 z-30 ml-2 w-[324px] -translate-y-1/2 rounded-[18px] border border-emerald-100 bg-white p-2 shadow-xl">
                   <div className="flex flex-wrap items-center gap-1">
                     {reactionEmojis.map((emoji) => (
                       <button
@@ -2436,7 +2442,7 @@ function MessageBubble({
               </button>
 
               {actionsOpen ? (
-                <div className={`absolute bottom-full z-30 mb-2 min-w-[156px] overflow-hidden rounded-[18px] border border-emerald-100 bg-white shadow-xl ${mine ? "right-0" : "left-0"}`}>
+                <div className="absolute bottom-full left-0 z-30 mb-2 min-w-[156px] overflow-hidden rounded-[18px] border border-emerald-100 bg-white shadow-xl">
                   <button
                     type="button"
                     onClick={() => {
@@ -10197,7 +10203,7 @@ export default function App() {
             <div className="mt-2 flex items-center gap-2">
               <button
                 type="button"
-                className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
+                className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-2xl bg-slate-50/95 px-3 py-2 text-[14px] font-semibold text-slate-500 transition hover:bg-white/70"
                 onClick={() => {
                   setNewChatOpen((value) => !value);
                   setInviteStatus("");
@@ -10211,7 +10217,7 @@ export default function App() {
 
               <button
                 type="button"
-                className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[15px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:border-slate-300"
+                className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-2xl bg-slate-50/95 px-3 py-2 text-[14px] font-semibold text-slate-500 transition hover:bg-white/70"
                 onClick={() => {
                   setGroupComposerOpen((value) => !value);
                   setGroupStatus("");
@@ -12122,12 +12128,14 @@ export default function App() {
                   </div>
                 ) : null}
 
-                {showEmojiPicker ? (
-                  <div
-                    ref={emojiPopover.ref}
-                    style={emojiPopover.floatingStyle}
-                    className="absolute bottom-full left-0 z-30 mb-2 w-[360px] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl"
-                  >
+                {/* Kept mounted (visibility toggled) like the animated-emoji
+                    picker, so reopening it returns to where you last scrolled. */}
+                <div
+                  ref={emojiPopover.ref}
+                  style={emojiPopover.floatingStyle}
+                  className={`absolute bottom-full left-0 z-30 mb-2 w-[360px] rounded-2xl border border-emerald-100 bg-white p-3 shadow-xl transition duration-150 ${showEmojiPicker ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
+                  aria-hidden={!showEmojiPicker}
+                >
                     <div className="mb-2 flex items-center justify-between" {...emojiPopover.dragHandleProps}>
                       <div className="text-[15px] font-semibold text-slate-700">Emoji picker</div>
                       <button type="button" className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-emerald-50" onClick={() => setShowEmojiPicker(false)}>✕</button>
@@ -12171,8 +12179,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                  </div>
-                ) : null}
+                </div>
               </div>
 
               <button disabled={!activeConversation} onClick={sendMessage} className="shrink-0 rounded-2xl bg-emerald-400 px-4 py-3 text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300" type="button">
