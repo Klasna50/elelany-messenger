@@ -2655,6 +2655,8 @@ export default function App() {
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [activityViewedAt, setActivityViewedAt] = useState<string>("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [koalaHovered, setKoalaHovered] = useState(false);
+  const [koalaPlayCount, setKoalaPlayCount] = useState(0);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordStatus, setPasswordStatus] = useState("");
@@ -5916,6 +5918,13 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
+  }, []);
+
+  // Warm the animated koala into the cache so the first hover plays instantly
+  // instead of waiting on a fetch.
+  useEffect(() => {
+    const image = new Image();
+    image.src = koalaAnimated;
   }, []);
 
   useEffect(() => {
@@ -10728,29 +10737,40 @@ export default function App() {
           <div ref={settingsPanelRef} className="relative bg-[#f4f4f4] p-4">
             <button
               type="button"
-              className="elelany-settings-koala group/koala flex h-14 w-14 items-center justify-center transition"
+              className="elelany-settings-koala flex h-14 w-14 items-center justify-center transition"
               onClick={() => setSettingsOpen((value) => !value)}
+              onMouseEnter={() => {
+                // Remount the animated image (new key) so its single play starts
+                // from the first frame on every hover.
+                setKoalaPlayCount((count) => count + 1);
+                setKoalaHovered(true);
+              }}
+              onMouseLeave={() => setKoalaHovered(false)}
               title="Settings"
               aria-label="Settings"
             >
-              {/* Still frame, desaturated, until hover — then the animated koala
-                  in full colour takes over. Both are stacked so the animation is
-                  already loaded and the swap can't flicker. */}
-              <span className="relative block h-7 w-7">
+              {/* The grayscale still frame always sits underneath, so there is
+                  never a blank moment; on hover the full-colour animation is
+                  laid straight over it and runs once (the APNG is encoded with
+                  num_plays = 1), then holds its last frame. */}
+              <span className="relative block h-[42px] w-[42px]">
                 <img
                   src={koalaStatic}
                   alt=""
                   aria-hidden="true"
                   draggable={false}
-                  className="absolute inset-0 h-7 w-7 object-contain grayscale transition-opacity duration-150 group-hover/koala:opacity-0"
+                  className="absolute inset-0 h-[42px] w-[42px] object-contain grayscale"
                 />
-                <img
-                  src={koalaAnimated}
-                  alt=""
-                  aria-hidden="true"
-                  draggable={false}
-                  className="absolute inset-0 h-7 w-7 object-contain opacity-0 transition-opacity duration-150 group-hover/koala:opacity-100"
-                />
+                {koalaHovered ? (
+                  <img
+                    key={koalaPlayCount}
+                    src={koalaAnimated}
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    className="absolute inset-0 h-[42px] w-[42px] object-contain"
+                  />
+                ) : null}
               </span>
             </button>
 
