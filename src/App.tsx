@@ -2657,6 +2657,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [koalaHovered, setKoalaHovered] = useState(false);
   const [koalaPlayCount, setKoalaPlayCount] = useState(0);
+  const [koalaAnimationReady, setKoalaAnimationReady] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordStatus, setPasswordStatus] = useState("");
@@ -10742,6 +10743,7 @@ export default function App() {
               onMouseEnter={() => {
                 // Remount the animated image (new key) so its single play starts
                 // from the first frame on every hover.
+                setKoalaAnimationReady(false);
                 setKoalaPlayCount((count) => count + 1);
                 setKoalaHovered(true);
               }}
@@ -10749,10 +10751,11 @@ export default function App() {
               title="Settings"
               aria-label="Settings"
             >
-              {/* The grayscale still frame always sits underneath, so there is
-                  never a blank moment; on hover the full-colour animation is
-                  laid straight over it and runs once (the APNG is encoded with
-                  num_plays = 1), then holds its last frame. */}
+              {/* Only one koala is ever visible: the grayscale still frame is
+                  hidden the moment the animation is ready to paint, so the
+                  moving koala never ghosts against a static copy behind it.
+                  Hiding it only once ready (the file is preloaded, so that is
+                  immediate) keeps the swap from leaving a blank frame. */}
               <span className="relative block h-[42px] w-[42px]">
                 <img
                   src={koalaStatic}
@@ -10760,10 +10763,17 @@ export default function App() {
                   aria-hidden="true"
                   draggable={false}
                   className="absolute inset-0 h-[42px] w-[42px] object-contain grayscale"
+                  style={{ opacity: koalaHovered && koalaAnimationReady ? 0 : 1 }}
                 />
                 {koalaHovered ? (
                   <img
                     key={koalaPlayCount}
+                    ref={(node) => {
+                      // A cached image can finish loading before onLoad is wired
+                      // up, so check completeness on mount too.
+                      if (node?.complete) setKoalaAnimationReady(true);
+                    }}
+                    onLoad={() => setKoalaAnimationReady(true)}
                     src={koalaAnimated}
                     alt=""
                     aria-hidden="true"
