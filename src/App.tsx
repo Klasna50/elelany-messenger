@@ -2246,7 +2246,10 @@ function MessageBubble({
 
           </div>
         ) : (
-          <div className={`rounded-3xl px-4 py-3 shadow-sm ${highlighted ? "activity-message-highlight" : ""} ${mine ? "mine-message-bubble rounded-br-lg bg-emerald-100/60 text-slate-700" : "other-message-bubble rounded-bl-lg border border-emerald-50 bg-white text-slate-700"}`}>
+          // Roomy top/bottom padding (py-[50px]) so text sits well clear of the
+          // bubble edges. Only this branch: emoji-only, animated-emoji, sticker
+          // and attachment messages are handled above and keep their spacing.
+          <div className={`rounded-3xl px-4 py-[50px] shadow-sm ${highlighted ? "activity-message-highlight" : ""} ${mine ? "mine-message-bubble rounded-br-lg bg-emerald-100/60 text-slate-700" : "other-message-bubble rounded-bl-lg border border-emerald-50 bg-white text-slate-700"}`}>
             <div
               className="message-copy break-words whitespace-pre-wrap text-[18px] leading-[30px] [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
               dangerouslySetInnerHTML={{ __html: messageHtml }}
