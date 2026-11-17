@@ -32,7 +32,7 @@ If the user picks *Later*, it installs automatically on next quit.
 ### a) Create the GitHub repo
 
 ```bash
-cd "/Users/v/Downloads/ELELANY 19.07.2026"
+cd ~/Projects/elelany-messenger
 git init
 git add .
 git commit -m "Elelany desktop app"

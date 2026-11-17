@@ -10,7 +10,7 @@
     {
       "name": "elelany-landing",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4321", "--directory", "landing"],
+      "runtimeArgs": ["-m", "http.server", "4321", "--directory", "/Users/v/Downloads/elelany-landing"],
       "port": 4321
     }
   ]
